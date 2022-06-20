@@ -93,6 +93,10 @@ protected:
 	float mRightAxis;
 	float mForwardAxis;
 	EWallrunSide mWallrunSide;
+	bool clawIntoWall;
+	float clawZTargetVelo;
+	float clawSpeed;
+	float clawTime;
 
 	FVector calcWallrunDir(FVector wallNormal, EWallrunSide side);
 	EWallrunSide findWallrunSide(FVector wallNormal);
@@ -103,6 +107,10 @@ protected:
 	FVector2D getHorizontalVelocity();
 	void clampHorizontalVelocity();
 	bool checkSideForWall(FHitResult& hit, EWallrunSide side, FVector forwardDirection, bool debug = false);
+
+	// start to wallclaw, claw duration ~= 1 / speed (seconds)
+	void startWallClaw(float speed, float targetZVelocity);
+	void endWallClaw();
 
 	void startWallrun(FVector wallNormal);
 	void endWallrun(EWallrunEndReason endReason);

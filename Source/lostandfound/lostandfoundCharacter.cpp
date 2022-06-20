@@ -155,6 +155,22 @@ bool AlostandfoundCharacter::checkSideForWall(FHitResult& hit, EWallrunSide side
 	return GetWorld()->LineTraceSingleByChannel(hit, GetActorLocation(), GetActorLocation() + traceForWall, ECollisionChannel::ECC_Visibility, IGNORE_SELF_COLLISION_PARAM);
 }
 
+void AlostandfoundCharacter::startWallClaw(float speed, float targetZVelocity)
+{
+	clawIntoWall = true;
+	clawTime = 0.0f;
+	clawZTargetVelo = targetZVelocity;
+	clawSpeed = speed;
+	GetCharacterMovement()->GravityScale = 0.0f;
+}
+
+void AlostandfoundCharacter::endWallClaw()
+{
+	GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Green, "stopped claw into wall");
+	clawIntoWall = false;
+	GetCharacterMovement()->GravityScale = 0.25f;
+}
+
 void AlostandfoundCharacter::startWallrun(FVector wallNormal)
 {
 	mWallrunSide = findWallrunSide(wallNormal);
@@ -166,21 +182,28 @@ void AlostandfoundCharacter::startWallrun(FVector wallNormal)
 		return;
 	}
 
-
 	auto cm = GetCharacterMovement();
-	// stop falling when starting to wallrun
-	//cm->Velocity.Z = cm->Velocity.Z < 0.0f ? 0.0f : cm->Velocity.Z;
-
-	// damp z velocity
-	cm->Velocity.Z *= 0.25;
-
 	cm->GravityScale = 0.25f;
+	// claw onto the wall by slowing down the sliding when velocity is below gravity level
+	if (cm->Velocity.Z < cm->GetGravityZ()) {
+		startWallClaw(2.0f, cm->GetGravityZ());
+	}
+	else {
+		clawIntoWall = false;
+		cm->Velocity.Z *= 0.35f;
+		// consider clawing into the wall with another speed (slower than downwards claw, like ~1.3f)
+		// startWallClaw(1.3f, cm->GetGravityZ());
+	}
+
 	cm->AirControl = 0.0f;
 	mIsWallrunning = true;
 }
 
 void AlostandfoundCharacter::endWallrun(EWallrunEndReason endReason)
 {
+	// call endWallClaw before gravity reset because it does manipulate gravity as well
+	endWallClaw();
+
 	auto cm = GetCharacterMovement();
 	cm->GravityScale = mDefaultGravityScale;
 	cm->AirControl = mDefaultAirControl;
@@ -219,10 +242,22 @@ void AlostandfoundCharacter::updateWallrun(float time)
 	mWallrunDir = calcWallrunDir(hit.ImpactNormal, side);
 
 	/* set velocity according to the wall direction */
-	float const speed = GetCharacterMovement()->MaxWalkSpeed;
+	auto cm = GetCharacterMovement();
+	float const speed = cm->MaxWalkSpeed;
+
 	DrawDebugLine(GetWorld(), GetActorLocation(), GetActorLocation() + (mWallrunDir * speed), FColor::Blue, false, -1.0f, 0U, 10.0f);
-	GetCharacterMovement()->Velocity.X = mWallrunDir.X * speed;
-	GetCharacterMovement()->Velocity.Y = mWallrunDir.Y * speed;
+	cm->Velocity.X = mWallrunDir.X * speed;
+	cm->Velocity.Y = mWallrunDir.Y * speed;
+
+	// manually calc velocity Z when clawing into the wall
+	if (clawIntoWall) {
+		clawTime += time;
+		GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Green, FString::Printf(TEXT("clawTime: %f, velo: %f, targetVelo: %f"), clawTime, cm->Velocity.Z, clawZTargetVelo));
+		cm->Velocity.Z = FMath::FInterpTo(cm->Velocity.Z, clawZTargetVelo, clawTime, clawSpeed);
+		if (cm->Velocity.Z == clawZTargetVelo) {
+			endWallClaw();
+		}
+	}
 }
 
 void AlostandfoundCharacter::OnPlayerHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComponent, FVector NormalImpulse, const FHitResult& Hit)
