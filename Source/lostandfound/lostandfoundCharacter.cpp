@@ -7,6 +7,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/Controller.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "SpecialMovementComponent.h"
 
 //////////////////////////////////////////////////////////////////////////
 // AlostandfoundCharacter
@@ -48,6 +49,8 @@ AlostandfoundCharacter::AlostandfoundCharacter()
 	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName); // Attach the camera to the end of the boom and let the boom adjust to match the controller orientation
 	FollowCamera->bUsePawnControlRotation = false; // Camera does not rotate relative to arm
 
+	specialMoves = CreateDefaultSubobject<USpecialMovementComponent>(TEXT("specialMoves"));
+
 	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character) 
 	// are set in the derived blueprint asset named ThirdPersonCharacter (to avoid direct content references in C++)
 }
@@ -80,32 +83,7 @@ void AlostandfoundCharacter::SetupPlayerInputComponent(class UInputComponent* Pl
 
 void AlostandfoundCharacter::Jump()
 {
-	FVector launchVelo;
-	if (mIsWallrunning) {
-		// jump off wall
-		launchVelo = calcLaunchVelocity();
-		endWallrun(EWallrunEndReason::USER_JUMP);
-	}
-	else if (JumpCurrentCount < JumpMaxCount) {
-		//if (GetCharacterMovement()->IsFalling()) {
-			//PlayAnimMontage()
-		//}	
-		JumpCurrentCount++;
-		launchVelo = calcLaunchVelocity();
-	}
-
-	if (launchVelo.Length() > 0) {
-		LaunchCharacter(launchVelo, false, true);
-	}
-
-
-	// are we close to an edge?
-		// velocity (direction) is at least 20° off the edge direction
-			// setMaxWalkSpeed * 2.0f;
-			// setVelocity *= 2.0f;
-			// startResetMaxWalkSpeedTimer(3 seconds)
-				// Interp the maxWalkSpeed back
-
+	specialMoves->Jump();
 }
 
 void AlostandfoundCharacter::StopJumping()
@@ -113,166 +91,9 @@ void AlostandfoundCharacter::StopJumping()
 	Super::StopJumping();
 }
 
-void AlostandfoundCharacter::ResetJump(int new_jump_count)
-{
-	JumpCurrentCount = FMath::Clamp(new_jump_count, 0, JumpMaxCount);
-}
-
-void AlostandfoundCharacter::setHorizontalVelocity(FVector2D vel)
-{
-	GetCharacterMovement()->Velocity.X = vel.X;
-	GetCharacterMovement()->Velocity.Y = vel.Y;
-}
-
-FVector2D AlostandfoundCharacter::getHorizontalVelocity()
-{
-	return FVector2D(GetCharacterMovement()->Velocity.X, GetCharacterMovement()->Velocity.Y);
-}
-
-void AlostandfoundCharacter::clampHorizontalVelocity()
-{
-	if (GetCharacterMovement()->IsFalling()) {
-		FVector2D vel = getHorizontalVelocity();
-		if (vel.Length() > GetCharacterMovement()->MaxWalkSpeed) {
-			float speedFactor = vel.Length() / GetCharacterMovement()->MaxWalkSpeed;
-			setHorizontalVelocity(vel / speedFactor);
-		}
-	}
-}
-
-bool AlostandfoundCharacter::checkSideForWall(FHitResult& hit, EWallrunSide side, FVector forwardDirection, bool debug)
-{
-	/* check for the current wall next to the character with a single trace line */
-	float const traceLength = GetCapsuleComponent()->GetCollisionShape().Capsule.Radius * 1.5f; // TODO: make member variable and expose to BP
-	FVector traceForWall = FVector::CrossProduct(forwardDirection, FVector(0, 0, side == WR_RIGHT ? 1 : -1));
-	traceForWall.Normalize();
-	traceForWall *= traceLength;
-
-	if (debug) {
-		DrawDebugLine(GetWorld(), GetActorLocation(), GetActorLocation() + traceForWall, FColor::Red, false, 40.0f, 0U, 10.0f);
-	}
-
-	return GetWorld()->LineTraceSingleByChannel(hit, GetActorLocation(), GetActorLocation() + traceForWall, ECollisionChannel::ECC_Visibility, IGNORE_SELF_COLLISION_PARAM);
-}
-
-void AlostandfoundCharacter::startWallClaw(float speed, float targetZVelocity)
-{
-	clawIntoWall = true;
-	clawTime = 0.0f;
-	clawZTargetVelo = targetZVelocity;
-	clawSpeed = speed;
-	GetCharacterMovement()->GravityScale = 0.0f;
-}
-
-void AlostandfoundCharacter::endWallClaw()
-{
-	GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Green, "stopped claw into wall");
-	clawIntoWall = false;
-	GetCharacterMovement()->GravityScale = 0.25f;
-}
-
-void AlostandfoundCharacter::startWallrun(FVector wallNormal)
-{
-	mWallrunSide = findWallrunSide(wallNormal);
-	mWallrunDir = calcWallrunDir(wallNormal, mWallrunSide);
-	
-	FHitResult hit;
-	if (checkSideForWall(hit, mWallrunSide, GetActorForwardVector(), true) == false) {
-		/* too straight to begin wallrun */
-		return;
-	}
-
-	auto cm = GetCharacterMovement();
-	cm->GravityScale = 0.25f;
-	// claw onto the wall by slowing down the sliding when velocity is below gravity level
-	if (cm->Velocity.Z < cm->GetGravityZ()) {
-		startWallClaw(2.0f, cm->GetGravityZ());
-	}
-	else {
-		clawIntoWall = false;
-		cm->Velocity.Z *= 0.35f;
-		// consider clawing into the wall with another speed (slower than downwards claw, like ~1.3f)
-		// startWallClaw(1.3f, cm->GetGravityZ());
-	}
-
-	cm->AirControl = 0.0f;
-	mIsWallrunning = true;
-}
-
-void AlostandfoundCharacter::endWallrun(EWallrunEndReason endReason)
-{
-	// call endWallClaw before gravity reset because it does manipulate gravity as well
-	endWallClaw();
-
-	auto cm = GetCharacterMovement();
-	cm->GravityScale = mDefaultGravityScale;
-	cm->AirControl = mDefaultAirControl;
-
-	// stop updateWallRun() timer
-	mIsWallrunning = false;
-
-	if (endReason == USER_JUMP) {
-		ResetJump(0);
-	}
-}
-
-void AlostandfoundCharacter::updateWallrun(float time)
-{
-	if (isWallrunInputPressed() == false) {
-		endWallrun(USER_STOP);
-		return;
-	}
-
-	if (GetCharacterMovement()->IsFalling() == false) {
-		endWallrun(HIT_GROUND);
-		return;
-	}
-
-	FHitResult hit;
-	if (checkSideForWall(hit, mWallrunSide, mWallrunDir, true) == false) {
-		endWallrun(FALL_OFF);
-		return;
-	}
-
-	auto side = findWallrunSide(hit.ImpactNormal);
-	if (side != mWallrunSide) {
-		endWallrun(FALL_OFF);
-		return;
-	}
-	mWallrunDir = calcWallrunDir(hit.ImpactNormal, side);
-
-	/* set velocity according to the wall direction */
-	auto cm = GetCharacterMovement();
-	float const speed = cm->MaxWalkSpeed;
-
-	DrawDebugLine(GetWorld(), GetActorLocation(), GetActorLocation() + (mWallrunDir * speed), FColor::Blue, false, -1.0f, 0U, 10.0f);
-	cm->Velocity.X = mWallrunDir.X * speed;
-	cm->Velocity.Y = mWallrunDir.Y * speed;
-
-	// manually calc velocity Z when clawing into the wall
-	if (clawIntoWall) {
-		clawTime += time;
-		GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Green, FString::Printf(TEXT("clawTime: %f, velo: %f, targetVelo: %f"), clawTime, cm->Velocity.Z, clawZTargetVelo));
-		cm->Velocity.Z = FMath::FInterpTo(cm->Velocity.Z, clawZTargetVelo, clawTime, clawSpeed);
-		if (cm->Velocity.Z == clawZTargetVelo) {
-			endWallClaw();
-		}
-	}
-}
-
 void AlostandfoundCharacter::OnPlayerHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComponent, FVector NormalImpulse, const FHitResult& Hit)
 {
-	if (mIsWallrunning || isWallrunInputPressed() == false || GetCharacterMovement()->IsFalling() == false) {
-		return;
-	}
-
-	DrawDebugLine(GetWorld(), Hit.ImpactPoint, Hit.ImpactPoint + (Hit.ImpactNormal * 100.0f), FColor::Yellow, false, 40.0f, 0U, 10.0f);
-
-	if (surfaceIsWallrunPossible(Hit.ImpactNormal)) {
-
-		startWallrun(Hit.ImpactNormal);
-	}
-
+	specialMoves->tryWallrun(Hit);
 }
 
 void AlostandfoundCharacter::TouchStarted(ETouchIndex::Type FingerIndex, FVector Location)
@@ -287,27 +108,17 @@ void AlostandfoundCharacter::TouchStopped(ETouchIndex::Type FingerIndex, FVector
 
 void AlostandfoundCharacter::OnLanded(const FHitResult& Hit)
 {
-	ResetJump(0);
+	specialMoves->ResetJump(0);
 }
 
 void AlostandfoundCharacter::Tick(float time)
 {
 	Super::Tick(time);
-
-	if (mIsWallrunning) {
-		updateWallrun(time);
-	}
-
-	clampHorizontalVelocity();
 }
 
 void AlostandfoundCharacter::BeginPlay()
 {
 	Super::BeginPlay();
-	// get default values to reset after wallrun
-	mDefaultGravityScale = GetCharacterMovement()->GravityScale;
-	mDefaultMaxWalkSpeed = GetCharacterMovement()->MaxWalkSpeed;
-	mDefaultAirControl = GetCharacterMovement()->AirControl;
 
 	GetCapsuleComponent()->OnComponentHit.AddDynamic(this, &AlostandfoundCharacter::OnPlayerHit);
 }
@@ -326,7 +137,10 @@ void AlostandfoundCharacter::LookUpAtRate(float Rate)
 
 void AlostandfoundCharacter::MoveForward(float Value)
 {
-	mForwardAxis = Value;
+	if (specialMoves) {
+		specialMoves->mForwardAxis = Value;
+	}
+	
 	if ((Controller != nullptr) && (Value != 0.0f))
 	{
 		// find out which way is forward
@@ -341,7 +155,10 @@ void AlostandfoundCharacter::MoveForward(float Value)
 
 void AlostandfoundCharacter::MoveRight(float Value)
 {
-	mRightAxis = Value;
+	if (specialMoves) {
+		specialMoves->mRightAxis = Value;
+	}
+
 	if ( (Controller != nullptr) && (Value != 0.0f) )
 	{
 		// find out which way is right
@@ -353,80 +170,4 @@ void AlostandfoundCharacter::MoveRight(float Value)
 		// add movement in that direction
 		AddMovementInput(Direction, Value);
 	}
-}
-
-FVector AlostandfoundCharacter::calcWallrunDir(FVector wallNormal, EWallrunSide side)
-{
-	FVector wallrunDir = FVector::CrossProduct(wallNormal, FVector(0, 0, side == WR_RIGHT ? 1 : -1));
-	wallrunDir.Normalize();
-	return wallrunDir;
-}
-
-AlostandfoundCharacter::EWallrunSide AlostandfoundCharacter::findWallrunSide(FVector wallNormal)
-{
-	if (FVector2D::DotProduct(FVector2D(GetActorRightVector()), FVector2D(wallNormal)) > 0.0f) {
-		return WR_RIGHT;
-	}
-	else {
-		return WR_LEFT;
-	}
-}
-
-FVector AlostandfoundCharacter::calcLaunchVelocity() const
-{
-	FVector launchDir(0,0,0);
-	if (mIsWallrunning) {
-		switch (mWallrunSide) {
-			case WR_LEFT:
-				launchDir = FVector::CrossProduct(FVector(0, 0, -1), mWallrunDir);
-				break;
-			case WR_RIGHT:
-				launchDir = FVector::CrossProduct(FVector(0, 0, 1), mWallrunDir);
-				break;
-		}
-	}
-	else if (GetCharacterMovement()->IsFalling()) {
-		launchDir = mRightAxis * GetActorRightVector() + mForwardAxis * GetActorForwardVector();
-	}
-
-	launchDir.Normalize();
-	launchDir *= GetCharacterMovement()->JumpZVelocity;
-
-	launchDir.Z = GetCharacterMovement()->JumpZVelocity; // maybe additive would be better?
-
-	DrawDebugLine(GetWorld(), GetActorLocation(), GetActorLocation() + launchDir, FColor::Green, false, 40.0f, 0U, 10.0f);
-	GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, *launchDir.ToString());
-
-	return launchDir;
-}
-
-bool AlostandfoundCharacter::surfaceIsWallrunPossible(FVector surfaceNormal) const
-{
-	// z < -0.05f is questionable?! i could try to wallrun on slopes that are kinda tilted inwards (looking down)
-	if (surfaceNormal.Z < -0.05f || surfaceNormal.Z > GetCharacterMovement()->GetWalkableFloorZ()) {
-		return false;
-	}
-	return true;
-}
-
-bool AlostandfoundCharacter::isWallrunInputPressed() const
-{
-	return true;
-	// todo use actual special input key (right mouse button?)
-	if (mForwardAxis > 0.0f) {
-		switch (mWallrunSide) {
-		case WR_LEFT:
-			if (mRightAxis < 0.0f) {
-				return true;
-			}
-			break;
-		case WR_RIGHT:
-			if (mRightAxis > 0.0f) {
-				return true;
-			}
-			break;
-		}
-	}
-
-	return false;
 }

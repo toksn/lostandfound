@@ -18,6 +18,9 @@ class AlostandfoundCharacter : public ACharacter
 	/** Follow camera */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Camera, meta = (AllowPrivateAccess = "true"))
 	class UCameraComponent* FollowCamera;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Movement, meta = (AllowPrivateAccess = "true"))
+	class USpecialMovementComponent* specialMoves;
 public:
 	AlostandfoundCharacter();
 
@@ -64,62 +67,8 @@ protected:
 	void Jump() override;
 	void StopJumping() override;
 
-	void ResetJump(int new_jump_count);
-
 	UFUNCTION()
 	void OnPlayerHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComponent, FVector NormalImpulse, const FHitResult& Hit);
-
-	
-	float mDefaultMaxWalkSpeed;
-
-	// Wallrunning section
-	enum EWallrunSide
-	{
-		WR_LEFT,
-		WR_RIGHT
-	};
-	enum EWallrunEndReason
-	{
-		USER_JUMP,
-		USER_STOP,
-		FALL_OFF,
-		HIT_GROUND
-	};
-
-	float mDefaultGravityScale;
-	float mDefaultAirControl;
-	bool mIsWallrunning = false;
-	FVector mWallrunDir;
-	float mRightAxis;
-	float mForwardAxis;
-	EWallrunSide mWallrunSide;
-	bool clawIntoWall;
-	float clawZTargetVelo;
-	float clawSpeed;
-	float clawTime;
-
-	FVector calcWallrunDir(FVector wallNormal, EWallrunSide side);
-	EWallrunSide findWallrunSide(FVector wallNormal);
-	FVector calcLaunchVelocity() const;
-	bool surfaceIsWallrunPossible(FVector surfaceNormal) const;
-	bool isWallrunInputPressed() const;
-	void setHorizontalVelocity(FVector2D vel);
-	FVector2D getHorizontalVelocity();
-	void clampHorizontalVelocity();
-	bool checkSideForWall(FHitResult& hit, EWallrunSide side, FVector forwardDirection, bool debug = false);
-
-	// start to wallclaw, claw duration ~= 1 / speed (seconds)
-	void startWallClaw(float speed, float targetZVelocity);
-	void endWallClaw();
-
-	void startWallrun(FVector wallNormal);
-	void endWallrun(EWallrunEndReason endReason);
-	void updateWallrun(float time);
-	// Wallrunning section end
-
-
-	#define IGNORE_SELF_COLLISION_PARAM FCollisionQueryParams(FName(TEXT("KnockTraceSingle")), true, this)
-
 
 public:
 	/** Returns CameraBoom subobject **/
