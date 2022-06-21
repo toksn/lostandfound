@@ -37,11 +37,6 @@ private:
 	class ACharacter* owner;
 	class UCharacterMovementComponent* move;
 
-	enum EWallrunSide
-	{
-		WR_LEFT,
-		WR_RIGHT
-	};
 	enum EWallrunEndReason
 	{
 		USER_JUMP,		/* user jumped off */
@@ -50,32 +45,48 @@ private:
 		HIT_GROUND		/* user hit the ground */
 	};
 
+	enum ESpecialMovementState
+	{
+		NONE,
+		WALLRUN_LEFT,
+		WALLRUN_RIGHT,
+		WALLRUN_UP,
+		SLIDE,
+		ON_LEDGE,
+		LEDGE_PULL
+	} mState;
+
 	float mDefaultGravityScale;
 	float mDefaultAirControl;
 	float mDefaultMaxWalkSpeed;
-	bool mIsWallrunning = false;
 	FVector mWallrunDir;
-	EWallrunSide mWallrunSide;
-	bool clawIntoWall;
-	float clawZTargetVelo;
-	float clawSpeed;
-	float clawTime;
+	FVector mWallNormal;
+	FVector mWallImpact;
+	bool mClawIntoWall;
+	float mClawZTargetVelo;
+	float mClawSpeed;
+	float mClawTime;
 
-	FVector calcWallrunDir(FVector wallNormal, EWallrunSide side);
-	EWallrunSide findWallrunSide(FVector wallNormal);
+	ESpecialMovementState findWallrunSide(FVector wallNormal);
+	bool checkDirectionForWall(FHitResult& hit, FVector direction, bool debug = false);
+	FVector calcWallrunDir(FVector wallNormal, ESpecialMovementState state);
 	FVector calcLaunchVelocity() const;
+
 	bool surfaceIsWallrunPossible(FVector surfaceNormal) const;
 	bool isWallrunInputPressed() const;
+
 	void setHorizontalVelocity(FVector2D vel);
 	FVector2D getHorizontalVelocity();
 	void clampHorizontalVelocity();
-	bool checkSideForWall(FHitResult& hit, EWallrunSide side, FVector forwardDirection, bool debug = false);
 
 	// start to wallclaw, claw duration ~= 1 / speed (seconds)
 	void startWallClaw(float speed, float targetZVelocity);
 	void endWallClaw();
+	bool isWallrunning(bool considerUp = false) const;
 
-	void startWallrun(FVector wallNormal);
+	void startWallrun(const FHitResult& wallHit);
 	void endWallrun(EWallrunEndReason endReason);
 	void updateWallrun(float time);
+
+	bool switchState(ESpecialMovementState newState);
 };

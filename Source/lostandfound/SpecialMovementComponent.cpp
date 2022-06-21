@@ -26,6 +26,8 @@ void USpecialMovementComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
+	mState = ESpecialMovementState::NONE;
+
 	owner = Cast<ACharacter>(GetOwner());
 	move = owner->GetCharacterMovement();
 
@@ -41,7 +43,7 @@ void USpecialMovementComponent::TickComponent(float DeltaTime, ELevelTick TickTy
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-	if (mIsWallrunning) {
+	if (isWallrunning()) {
 		updateWallrun(DeltaTime);
 	}
 
@@ -56,7 +58,7 @@ void USpecialMovementComponent::ResetJump(int new_jump_count)
 void USpecialMovementComponent::Jump()
 {
 	FVector launchVelo;
-	if (mIsWallrunning) {
+	if (isWallrunning()) {
 		// jump off wall
 		launchVelo = calcLaunchVelocity();
 		endWallrun(EWallrunEndReason::USER_JUMP);
@@ -104,58 +106,76 @@ void USpecialMovementComponent::clampHorizontalVelocity()
 	}
 }
 
-bool USpecialMovementComponent::checkSideForWall(FHitResult& hit, EWallrunSide side, FVector forwardDirection, bool debug)
+bool USpecialMovementComponent::checkDirectionForWall(FHitResult& hit, FVector direction, bool debug)
 {
 	/* check for the current wall next to the character with a single trace line */
 	float const traceLength = owner->GetCapsuleComponent()->GetCollisionShape().Capsule.Radius * 1.5f; // TODO: make member variable and expose to BP
-	FVector traceForWall = FVector::CrossProduct(forwardDirection, FVector(0, 0, side == WR_RIGHT ? 1 : -1));
-	traceForWall.Normalize();
-	traceForWall *= traceLength;
+	direction.Normalize();
+	direction *= traceLength;
 
 	if (debug) {
-		DrawDebugLine(GetWorld(), owner->GetActorLocation(), owner->GetActorLocation() + traceForWall, FColor::Red, false, 40.0f, 0U, 10.0f);
+		DrawDebugLine(GetWorld(), owner->GetActorLocation(), owner->GetActorLocation() + direction, FColor::Red, false, 40.0f, 0U, 10.0f);
 	}
 
-	return GetWorld()->LineTraceSingleByChannel(hit, owner->GetActorLocation(), owner->GetActorLocation() + traceForWall, ECollisionChannel::ECC_Visibility, IGNORE_SELF_COLLISION_PARAM);
+	return GetWorld()->LineTraceSingleByChannel(hit, owner->GetActorLocation(), owner->GetActorLocation() + direction, ECollisionChannel::ECC_Visibility, IGNORE_SELF_COLLISION_PARAM);
 }
 
 void USpecialMovementComponent::startWallClaw(float speed, float targetZVelocity)
 {
-	clawIntoWall = true;
-	clawTime = 0.0f;
-	clawZTargetVelo = targetZVelocity;
-	clawSpeed = speed;
+	mClawIntoWall = true;
+	mClawTime = 0.0f;
+	mClawZTargetVelo = targetZVelocity;
+	mClawSpeed = speed;
 	move->GravityScale = 0.0f;
 }
 
 void USpecialMovementComponent::endWallClaw()
 {
-	GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Green, "stopped claw into wall");
-	clawIntoWall = false;
-	move->GravityScale = 0.25f;
+	if (mClawIntoWall) {
+		GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Green, "stopped claw into wall");
+		mClawIntoWall = false;
+		move->GravityScale = 0.25f;
+	}
+}
+
+bool USpecialMovementComponent::isWallrunning(bool considerUp) const
+{
+	return mState == WALLRUN_LEFT || mState == WALLRUN_RIGHT || (considerUp && mState == WALLRUN_UP);
 }
 
 void USpecialMovementComponent::tryWallrun(const FHitResult& wallHit)
 {
-	if (mIsWallrunning || isWallrunInputPressed() == false || move->IsFalling() == false) {
+	if (isWallrunning() || isWallrunInputPressed() == false || move->IsFalling() == false) {
 		return;
 	}
 
 	DrawDebugLine(GetWorld(), wallHit.ImpactPoint, wallHit.ImpactPoint + (wallHit.ImpactNormal * 100.0f), FColor::Yellow, false, 40.0f, 0U, 10.0f);
 
 	if (surfaceIsWallrunPossible(wallHit.ImpactNormal)) {
-		startWallrun(wallHit.ImpactNormal);
+		startWallrun(wallHit);
 	}
 }
 
-void USpecialMovementComponent::startWallrun(FVector wallNormal)
+void USpecialMovementComponent::startWallrun(const FHitResult& wallHit)
 {
-	mWallrunSide = findWallrunSide(wallNormal);
-	mWallrunDir = calcWallrunDir(wallNormal, mWallrunSide);
+	mWallNormal = wallHit.ImpactNormal;
+	mWallImpact = wallHit.ImpactPoint;
+	auto state = findWallrunSide(mWallNormal);
+	mWallrunDir = calcWallrunDir(mWallNormal, state);
+
 
 	FHitResult hit;
-	if (checkSideForWall(hit, mWallrunSide, owner->GetActorForwardVector(), true) == false) {
+	FVector side = owner->GetActorRightVector();
+	if (state == WALLRUN_RIGHT) {
+		side *= -1.0f;
+	}
+
+	if (checkDirectionForWall(hit, side, true) == false) {
 		/* too straight to begin wallrun */
+		return;
+	}
+
+	if (switchState(state) == false) {
 		return;
 	}
 
@@ -166,27 +186,27 @@ void USpecialMovementComponent::startWallrun(FVector wallNormal)
 		startWallClaw(2.0f, cm->GetGravityZ());
 	}
 	else {
-		clawIntoWall = false;
+		mClawIntoWall = false;
 		cm->Velocity.Z *= 0.35f;
 		// consider clawing into the wall with another speed (slower than downwards claw, like ~1.3f)
 		// startWallClaw(1.3f, cm->GetGravityZ());
 	}
 
 	cm->AirControl = 0.0f;
-	mIsWallrunning = true;
 }
 
 void USpecialMovementComponent::endWallrun(EWallrunEndReason endReason)
 {
+	if (switchState(ESpecialMovementState::NONE) == false) {
+		return;
+	}
+
 	// call endWallClaw before gravity reset because it does manipulate gravity as well
 	endWallClaw();
 
 	auto cm = move;
 	cm->GravityScale = mDefaultGravityScale;
 	cm->AirControl = mDefaultAirControl;
-
-	// stop updateWallRun() timer
-	mIsWallrunning = false;
 
 	if (endReason == USER_JUMP) {
 		ResetJump(0);
@@ -206,17 +226,20 @@ void USpecialMovementComponent::updateWallrun(float time)
 	}
 
 	FHitResult hit;
-	if (checkSideForWall(hit, mWallrunSide, mWallrunDir, true) == false) {
+	if (checkDirectionForWall(hit, -mWallNormal, true) == false) {
 		endWallrun(FALL_OFF);
 		return;
 	}
 
-	auto side = findWallrunSide(hit.ImpactNormal);
-	if (side != mWallrunSide) {
+	auto state = findWallrunSide(hit.ImpactNormal);
+	if (state != mState) {
 		endWallrun(FALL_OFF);
 		return;
 	}
-	mWallrunDir = calcWallrunDir(hit.ImpactNormal, side);
+
+	mWallNormal = hit.ImpactNormal;
+	mWallImpact = hit.ImpactPoint;
+	mWallrunDir = calcWallrunDir(mWallNormal, state);
 
 	/* set velocity according to the wall direction */
 	auto cm = move;
@@ -227,43 +250,61 @@ void USpecialMovementComponent::updateWallrun(float time)
 	cm->Velocity.Y = mWallrunDir.Y * speed;
 
 	// manually calc velocity Z when clawing into the wall
-	if (clawIntoWall) {
-		clawTime += time;
-		GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Green, FString::Printf(TEXT("clawTime: %f, velo: %f, targetVelo: %f"), clawTime, cm->Velocity.Z, clawZTargetVelo));
-		cm->Velocity.Z = FMath::FInterpTo(cm->Velocity.Z, clawZTargetVelo, clawTime, clawSpeed);
-		if (cm->Velocity.Z == clawZTargetVelo) {
+	if (mClawIntoWall) {
+		mClawTime += time;
+		GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Green, FString::Printf(TEXT("mClawTime: %f, velo: %f, targetVelo: %f"), mClawTime, cm->Velocity.Z, mClawZTargetVelo));
+		cm->Velocity.Z = FMath::FInterpTo(cm->Velocity.Z, mClawZTargetVelo, mClawTime, mClawSpeed);
+		if (cm->Velocity.Z == mClawZTargetVelo) {
 			endWallClaw();
 		}
 	}
 }
 
-FVector USpecialMovementComponent::calcWallrunDir(FVector wallNormal, EWallrunSide side)
+bool USpecialMovementComponent::switchState(ESpecialMovementState newState)
 {
-	FVector wallrunDir = FVector::CrossProduct(wallNormal, FVector(0, 0, side == WR_RIGHT ? 1 : -1));
+	mState = newState;
+	return true;
+}
+
+FVector USpecialMovementComponent::calcWallrunDir(FVector wallNormal, ESpecialMovementState state)
+{
+	if (state != WALLRUN_LEFT && state != WALLRUN_RIGHT && state != WALLRUN_UP) {
+		return FVector();
+	}
+
+	if (state == WALLRUN_UP) {
+		return FVector(0,0,1.0f-wallNormal.Z);
+	}
+
+	FVector perpVec(0, 0, 1);
+	if (state == WALLRUN_LEFT) {
+		perpVec.Z = -1.0f;
+	}
+
+	FVector wallrunDir = FVector::CrossProduct(wallNormal, perpVec);
 	wallrunDir.Normalize();
 	return wallrunDir;
 }
 
-USpecialMovementComponent::EWallrunSide USpecialMovementComponent::findWallrunSide(FVector wallNormal)
+USpecialMovementComponent::ESpecialMovementState USpecialMovementComponent::findWallrunSide(FVector wallNormal)
 {
 	if (FVector2D::DotProduct(FVector2D(owner->GetActorRightVector()), FVector2D(wallNormal)) > 0.0f) {
-		return WR_RIGHT;
+		return WALLRUN_RIGHT;
 	}
 	else {
-		return WR_LEFT;
+		return WALLRUN_LEFT;
 	}
 }
 
 FVector USpecialMovementComponent::calcLaunchVelocity() const
 {
 	FVector launchDir(0, 0, 0);
-	if (mIsWallrunning) {
-		switch (mWallrunSide) {
-		case WR_LEFT:
-			launchDir = FVector::CrossProduct(FVector(0, 0, -1), mWallrunDir);
-			break;
-		case WR_RIGHT:
-			launchDir = FVector::CrossProduct(FVector(0, 0, 1), mWallrunDir);
+	if (isWallrunning()) {
+		switch (mState) {
+		case WALLRUN_LEFT:
+		case WALLRUN_RIGHT:
+		case WALLRUN_UP:
+			launchDir = mWallNormal;
 			break;
 		}
 	}
