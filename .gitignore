@@ -75,5 +75,3 @@ DerivedDataCache/*
 
 # ignore packaged directories
 packaged/
-
-Content/__*/*
