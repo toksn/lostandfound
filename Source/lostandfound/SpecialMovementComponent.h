@@ -33,6 +33,12 @@ public:
 	float mRightAxis;
 	float mForwardAxis;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Settings)
+	float mWallrunGravity = 0.25f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Settings)
+	int mRegainJumpsAfterWalljump = 1;
+
 private:
 	class ACharacter* owner;
 	class UCharacterMovementComponent* move;

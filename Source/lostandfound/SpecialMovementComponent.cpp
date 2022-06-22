@@ -2,11 +2,11 @@
 
 #pragma once
 
+#include "SpecialMovementComponent.h"
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/CapsuleComponent.h"
-#include "SpecialMovementComponent.h"
 
 #define IGNORE_SELF_COLLISION_PARAM FCollisionQueryParams(FName(TEXT("KnockTraceSingle")), true, owner)
 
@@ -75,7 +75,6 @@ void USpecialMovementComponent::Jump()
 		owner->LaunchCharacter(launchVelo, false, true);
 	}
 
-
 	// are we close to an edge?
 		// velocity (direction) is at least 20° off the edge direction
 			// setMaxWalkSpeed * 2.0f;
@@ -134,7 +133,7 @@ void USpecialMovementComponent::endWallClaw()
 	if (mClawIntoWall) {
 		GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Green, "stopped claw into wall");
 		mClawIntoWall = false;
-		move->GravityScale = 0.25f;
+		move->GravityScale = mWallrunGravity;
 	}
 }
 
@@ -209,7 +208,7 @@ void USpecialMovementComponent::endWallrun(EWallrunEndReason endReason)
 	cm->AirControl = mDefaultAirControl;
 
 	if (endReason == USER_JUMP) {
-		ResetJump(0);
+		ResetJump(owner->JumpCurrentCount - mRegainJumpsAfterWalljump);
 	}
 }
 
