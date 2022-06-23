@@ -75,3 +75,5 @@ DerivedDataCache/*
 
 # ignore packaged directories
 packaged/
+.idea/
+Plugins/Developer/RiderLink/

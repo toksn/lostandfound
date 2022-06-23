@@ -165,7 +165,7 @@ void USpecialMovementComponent::startWallrun(const FHitResult& wallHit)
 
 	FHitResult hit;
 	FVector side = owner->GetActorRightVector();
-	if (state == ESpecialMovementState::WALLRUN_RIGHT) {
+	if (state == ESpecialMovementState::WALLRUN_LEFT) {
 		side *= -1.0f;
 	}
 
@@ -276,7 +276,7 @@ FVector USpecialMovementComponent::calcWallrunDir(FVector wallNormal, ESpecialMo
 	}
 
 	FVector perpVec(0, 0, 1);
-	if (state == ESpecialMovementState::WALLRUN_LEFT) {
+	if (state == ESpecialMovementState::WALLRUN_RIGHT) {
 		perpVec.Z = -1.0f;
 	}
 
@@ -288,10 +288,10 @@ FVector USpecialMovementComponent::calcWallrunDir(FVector wallNormal, ESpecialMo
 ESpecialMovementState USpecialMovementComponent::findWallrunSide(FVector wallNormal)
 {
 	if (FVector2D::DotProduct(FVector2D(owner->GetActorRightVector()), FVector2D(wallNormal)) > 0.0f) {
-		return ESpecialMovementState::WALLRUN_RIGHT;
+		return ESpecialMovementState::WALLRUN_LEFT;
 	}
 	else {
-		return ESpecialMovementState::WALLRUN_LEFT;
+		return ESpecialMovementState::WALLRUN_RIGHT;
 	}
 }
 
