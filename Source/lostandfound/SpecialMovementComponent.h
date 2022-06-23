@@ -6,6 +6,18 @@
 #include "Components/ActorComponent.h"
 #include "SpecialMovementComponent.generated.h"
 
+UENUM(BlueprintType)
+enum class ESpecialMovementState : uint8
+{
+	NONE			UMETA(DisplayName = "None"),
+	WALLRUN_LEFT	UMETA(DisplayName = "Wallrun Left"),
+	WALLRUN_RIGHT	UMETA(DisplayName = "Wallrun Right"),
+	WALLRUN_UP		UMETA(DisplayName = "Wallrun Up"),
+	SLIDE			UMETA(DisplayName = "Slide"),
+	ON_LEDGE		UMETA(DisplayName = "On Ledge"),
+	LEDGE_PULL		UMETA(DisplayName = "Ledge Pull")
+};
+
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
 class LOSTANDFOUND_API USpecialMovementComponent : public UActorComponent
@@ -39,6 +51,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Settings)
 	int mRegainJumpsAfterWalljump = 1;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Status)
+	ESpecialMovementState mState;
+
 private:
 	class ACharacter* owner;
 	class UCharacterMovementComponent* move;
@@ -50,17 +65,6 @@ private:
 		FALL_OFF,		/* user fell off */
 		HIT_GROUND		/* user hit the ground */
 	};
-
-	enum ESpecialMovementState
-	{
-		NONE,
-		WALLRUN_LEFT,
-		WALLRUN_RIGHT,
-		WALLRUN_UP,
-		SLIDE,
-		ON_LEDGE,
-		LEDGE_PULL
-	} mState;
 
 	float mDefaultGravityScale;
 	float mDefaultAirControl;

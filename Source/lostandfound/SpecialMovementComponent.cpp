@@ -139,7 +139,7 @@ void USpecialMovementComponent::endWallClaw()
 
 bool USpecialMovementComponent::isWallrunning(bool considerUp) const
 {
-	return mState == WALLRUN_LEFT || mState == WALLRUN_RIGHT || (considerUp && mState == WALLRUN_UP);
+	return mState == ESpecialMovementState::WALLRUN_LEFT || mState == ESpecialMovementState::WALLRUN_RIGHT || (considerUp && mState == ESpecialMovementState::WALLRUN_UP);
 }
 
 void USpecialMovementComponent::tryWallrun(const FHitResult& wallHit)
@@ -165,7 +165,7 @@ void USpecialMovementComponent::startWallrun(const FHitResult& wallHit)
 
 	FHitResult hit;
 	FVector side = owner->GetActorRightVector();
-	if (state == WALLRUN_RIGHT) {
+	if (state == ESpecialMovementState::WALLRUN_RIGHT) {
 		side *= -1.0f;
 	}
 
@@ -267,16 +267,16 @@ bool USpecialMovementComponent::switchState(ESpecialMovementState newState)
 
 FVector USpecialMovementComponent::calcWallrunDir(FVector wallNormal, ESpecialMovementState state)
 {
-	if (state != WALLRUN_LEFT && state != WALLRUN_RIGHT && state != WALLRUN_UP) {
+	if (state != ESpecialMovementState::WALLRUN_LEFT && state != ESpecialMovementState::WALLRUN_RIGHT && state != ESpecialMovementState::WALLRUN_UP) {
 		return FVector();
 	}
 
-	if (state == WALLRUN_UP) {
+	if (state == ESpecialMovementState::WALLRUN_UP) {
 		return FVector(0,0,1.0f-wallNormal.Z);
 	}
 
 	FVector perpVec(0, 0, 1);
-	if (state == WALLRUN_LEFT) {
+	if (state == ESpecialMovementState::WALLRUN_LEFT) {
 		perpVec.Z = -1.0f;
 	}
 
@@ -285,13 +285,13 @@ FVector USpecialMovementComponent::calcWallrunDir(FVector wallNormal, ESpecialMo
 	return wallrunDir;
 }
 
-USpecialMovementComponent::ESpecialMovementState USpecialMovementComponent::findWallrunSide(FVector wallNormal)
+ESpecialMovementState USpecialMovementComponent::findWallrunSide(FVector wallNormal)
 {
 	if (FVector2D::DotProduct(FVector2D(owner->GetActorRightVector()), FVector2D(wallNormal)) > 0.0f) {
-		return WALLRUN_RIGHT;
+		return ESpecialMovementState::WALLRUN_RIGHT;
 	}
 	else {
-		return WALLRUN_LEFT;
+		return ESpecialMovementState::WALLRUN_LEFT;
 	}
 }
 
@@ -300,9 +300,9 @@ FVector USpecialMovementComponent::calcLaunchVelocity() const
 	FVector launchDir(0, 0, 0);
 	if (isWallrunning()) {
 		switch (mState) {
-		case WALLRUN_LEFT:
-		case WALLRUN_RIGHT:
-		case WALLRUN_UP:
+		case ESpecialMovementState::WALLRUN_LEFT:
+		case ESpecialMovementState::WALLRUN_RIGHT:
+		case ESpecialMovementState::WALLRUN_UP:
 			launchDir = mWallNormal;
 			break;
 		}
