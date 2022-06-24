@@ -72,6 +72,7 @@ private:
 	FVector mWallrunDir;
 	FVector mWallNormal;
 	FVector mWallImpact;
+	float mWallrunSpeed;
 	bool mClawIntoWall;
 	float mClawZTargetVelo;
 	float mClawSpeed;

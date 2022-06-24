@@ -35,6 +35,12 @@ void USpecialMovementComponent::BeginPlay()
 	mDefaultGravityScale = move->GravityScale;
 	mDefaultMaxWalkSpeed = move->MaxWalkSpeed;
 	mDefaultAirControl = move->AirControl;
+
+	mWallrunSpeed = move->MaxWalkSpeed;
+
+	// slowmo wallrun for testing
+	// mWallrunSpeed *= 0.1f;
+	// mWallrunGravity = 0.005f;
 }
 
 
@@ -178,20 +184,20 @@ void USpecialMovementComponent::startWallrun(const FHitResult& wallHit)
 		return;
 	}
 
-	auto cm = move;
-	cm->GravityScale = 0.25f;
+	move->GravityScale = mWallrunGravity;
 	// claw onto the wall by slowing down the sliding when velocity is below gravity level
-	if (cm->Velocity.Z < cm->GetGravityZ()) {
-		startWallClaw(2.0f, cm->GetGravityZ());
+	if (move->Velocity.Z < move->GetGravityZ()) {
+		startWallClaw(2.0f, move->GetGravityZ());
 	}
 	else {
 		mClawIntoWall = false;
-		cm->Velocity.Z *= 0.35f;
+		move->Velocity.Z *= 0.35f;
 		// consider clawing into the wall with another speed (slower than downwards claw, like ~1.3f)
-		// startWallClaw(1.3f, cm->GetGravityZ());
+		// startWallClaw(1.3f, move->GetGravityZ());
 	}
 
-	cm->AirControl = 0.0f;
+	move->AirControl = 0.0f;
+	move->bOrientRotationToMovement = false;
 }
 
 void USpecialMovementComponent::endWallrun(EWallrunEndReason endReason)
@@ -203,9 +209,9 @@ void USpecialMovementComponent::endWallrun(EWallrunEndReason endReason)
 	// call endWallClaw before gravity reset because it does manipulate gravity as well
 	endWallClaw();
 
-	auto cm = move;
-	cm->GravityScale = mDefaultGravityScale;
-	cm->AirControl = mDefaultAirControl;
+	move->GravityScale = mDefaultGravityScale;
+	move->AirControl = mDefaultAirControl;
+	move->bOrientRotationToMovement = true;
 
 	if (endReason == USER_JUMP) {
 		ResetJump(owner->JumpCurrentCount - mRegainJumpsAfterWalljump);
@@ -240,23 +246,23 @@ void USpecialMovementComponent::updateWallrun(float time)
 	mWallImpact = hit.ImpactPoint;
 	mWallrunDir = calcWallrunDir(mWallNormal, state);
 
-	/* set velocity according to the wall direction */
-	auto cm = move;
-	float const speed = cm->MaxWalkSpeed;
-
-	DrawDebugLine(GetWorld(), owner->GetActorLocation(), owner->GetActorLocation() + (mWallrunDir * speed), FColor::Blue, false, -1.0f, 0U, 10.0f);
-	cm->Velocity.X = mWallrunDir.X * speed;
-	cm->Velocity.Y = mWallrunDir.Y * speed;
+	// set velocity according to the wall direction
+	DrawDebugLine(GetWorld(), owner->GetActorLocation(), owner->GetActorLocation() + (mWallrunDir * mWallrunSpeed), FColor::Blue, false, -1.0f, 0U, 10.0f);
+	move->Velocity.X = mWallrunDir.X * mWallrunSpeed;
+	move->Velocity.Y = mWallrunDir.Y * mWallrunSpeed;
 
 	// manually calc velocity Z when clawing into the wall
 	if (mClawIntoWall) {
 		mClawTime += time;
-		GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Green, FString::Printf(TEXT("mClawTime: %f, velo: %f, targetVelo: %f"), mClawTime, cm->Velocity.Z, mClawZTargetVelo));
-		cm->Velocity.Z = FMath::FInterpTo(cm->Velocity.Z, mClawZTargetVelo, mClawTime, mClawSpeed);
-		if (cm->Velocity.Z == mClawZTargetVelo) {
+		GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Green, FString::Printf(TEXT("mClawTime: %f, velo: %f, targetVelo: %f"), mClawTime, move->Velocity.Z, mClawZTargetVelo));
+		move->Velocity.Z = FMath::FInterpTo(move->Velocity.Z, mClawZTargetVelo, mClawTime, mClawSpeed);
+		if (move->Velocity.Z == mClawZTargetVelo) {
 			endWallClaw();
 		}
 	}
+
+	// manually set rotation based on the wallrun direction
+	move->MoveUpdatedComponent(FVector::ZeroVector, mWallrunDir.Rotation(), false);
 }
 
 bool USpecialMovementComponent::switchState(ESpecialMovementState newState)
