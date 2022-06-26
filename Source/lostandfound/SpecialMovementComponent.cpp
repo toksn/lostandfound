@@ -114,7 +114,7 @@ void USpecialMovementComponent::clampHorizontalVelocity()
 bool USpecialMovementComponent::checkDirectionForWall(FHitResult& hit, FVector direction, bool debug)
 {
 	/* check for the current wall next to the character with a single trace line */
-	float const traceLength = owner->GetCapsuleComponent()->GetCollisionShape().Capsule.Radius * 1.5f; // TODO: make member variable and expose to BP
+	float const traceLength = owner->GetCapsuleComponent()->GetCollisionShape().Capsule.Radius * 2.0f; // TODO: make member variable and expose to BP
 	direction.Normalize();
 	direction *= traceLength;
 
@@ -261,8 +261,11 @@ void USpecialMovementComponent::updateWallrun(float time)
 		}
 	}
 
+	// correct wallrun position
+	FVector const pos = mWallImpact + mWallNormal * owner->GetCapsuleComponent()->GetScaledCapsuleRadius();
+
 	// manually set rotation based on the wallrun direction
-	move->MoveUpdatedComponent(FVector::ZeroVector, mWallrunDir.Rotation(), false);
+	move->MoveUpdatedComponent(pos - move->GetActorLocation(), mWallrunDir.Rotation(), false);
 }
 
 bool USpecialMovementComponent::switchState(ESpecialMovementState newState)
