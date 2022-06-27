@@ -108,7 +108,7 @@ void AlostandfoundCharacter::TouchStopped(ETouchIndex::Type FingerIndex, FVector
 
 void AlostandfoundCharacter::OnLanded(const FHitResult& Hit)
 {
-	specialMoves->ResetJump(0);
+	specialMoves->OnLanded(Hit);
 }
 
 void AlostandfoundCharacter::Tick(float time)

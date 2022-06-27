@@ -56,6 +56,12 @@ void USpecialMovementComponent::TickComponent(float DeltaTime, ELevelTick TickTy
 	clampHorizontalVelocity();
 }
 
+void USpecialMovementComponent::OnLanded(const FHitResult& Hit)
+{
+	ResetJump(0);
+	resetWallrunPrevention();
+}
+
 void USpecialMovementComponent::ResetJump(int new_jump_count)
 {
 	owner->JumpCurrentCount = FMath::Clamp(new_jump_count, 0, owner->JumpMaxCount);
@@ -150,8 +156,28 @@ bool USpecialMovementComponent::isWallrunning(bool considerUp) const
 
 void USpecialMovementComponent::tryWallrun(const FHitResult& wallHit)
 {
-	if (isWallrunning() || isWallrunInputPressed() == false || move->IsFalling() == false) {
+	if (mWallrunPrevention || isWallrunInputPressed() == false || move->IsFalling() == false) {
 		return;
+	}
+
+	if (isWallrunning()) {
+		if (surfaceIsWallrunPossible(wallHit.ImpactNormal)) {
+			// check angle between new and old wall
+			double angle = calcAngleBetweenVectors(wallHit.ImpactNormal, mWallNormal);
+
+			GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Yellow, FString::Printf(TEXT("hit something while wallrunning, angle diff: %f"), angle));
+			if (angle < mMaxWallrunInnerAngle) {
+				mWallNormal = wallHit.ImpactNormal;
+				mWallImpact = wallHit.ImpactPoint;
+				mWallrunDir = calcWallrunDir(mWallNormal, mState);
+				return;
+			}
+			else {
+				// end wallrun with angle out of bounds to prevent a wallrunning loop in an inner corner.
+				endWallrun(EWallrunEndReason::ANGLE_OUT_OF_BOUNDS);
+				return;
+			}
+		}
 	}
 
 	DrawDebugLine(GetWorld(), wallHit.ImpactPoint, wallHit.ImpactPoint + (wallHit.ImpactNormal * 100.0f), FColor::Yellow, false, 40.0f, 0U, 10.0f);
@@ -175,8 +201,11 @@ void USpecialMovementComponent::startWallrun(const FHitResult& wallHit)
 		side *= -1.0f;
 	}
 
-	if (checkDirectionForWall(hit, side, true) == false) {
-		/* too straight to begin wallrun */
+	double const angle = calcAngleBetweenVectors(wallHit.ImpactNormal, -side);
+	GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Yellow, FString::Printf(TEXT("hit something while wallrunning, angle diff: %f"), angle));
+	if (angle > mMaxWallrunStartAngle) {
+		// too straight to begin wallrun left / right
+		// TODO: wallrun up
 		return;
 	}
 
@@ -200,6 +229,22 @@ void USpecialMovementComponent::startWallrun(const FHitResult& wallHit)
 	move->bOrientRotationToMovement = false;
 }
 
+void USpecialMovementComponent::resetWallrunPrevention()
+{
+	mWallrunPrevention = false;
+	GetWorld()->GetTimerManager().ClearTimer(mWallrunPreventTimer);
+}
+
+// This activates the wallrun prevention until the timer ran out or the character hit the ground.
+// Use negative or 0.0f seconds for no time constraint, thus only reset when hit the ground.
+void USpecialMovementComponent::setWallrunPrevention(float timeToPrevent)
+{
+	mWallrunPrevention = true;
+	if (timeToPrevent > 0.0f) {
+		GetWorld()->GetTimerManager().SetTimer(mWallrunPreventTimer, this, &USpecialMovementComponent::resetWallrunPrevention, 1.0f);
+	}
+}
+
 void USpecialMovementComponent::endWallrun(EWallrunEndReason endReason)
 {
 	if (switchState(ESpecialMovementState::NONE) == false) {
@@ -215,6 +260,12 @@ void USpecialMovementComponent::endWallrun(EWallrunEndReason endReason)
 
 	if (endReason == USER_JUMP) {
 		ResetJump(owner->JumpCurrentCount - mRegainJumpsAfterWalljump);
+		// TODO: this does not feel good, deactivated for now. Do we really need this?
+		// setWallrunPrevention(0.05f);
+	}
+	else if (endReason == ANGLE_OUT_OF_BOUNDS) {
+		// prevent next wallrun until we hit the ground or timed out
+		setWallrunPrevention(0.5f);
 	}
 }
 
@@ -236,15 +287,9 @@ void USpecialMovementComponent::updateWallrun(float time)
 		return;
 	}
 
-	auto state = findWallrunSide(hit.ImpactNormal);
-	if (state != mState) {
-		endWallrun(FALL_OFF);
-		return;
-	}
-
 	mWallNormal = hit.ImpactNormal;
 	mWallImpact = hit.ImpactPoint;
-	mWallrunDir = calcWallrunDir(mWallNormal, state);
+	mWallrunDir = calcWallrunDir(mWallNormal, mState);
 
 	// set velocity according to the wall direction
 	DrawDebugLine(GetWorld(), owner->GetActorLocation(), owner->GetActorLocation() + (mWallrunDir * mWallrunSpeed), FColor::Blue, false, -1.0f, 0U, 10.0f);
@@ -262,10 +307,11 @@ void USpecialMovementComponent::updateWallrun(float time)
 	}
 
 	// correct wallrun position
-	FVector const pos = mWallImpact + mWallNormal * owner->GetCapsuleComponent()->GetScaledCapsuleRadius();
+	FVector positionCorrection = mWallImpact + mWallNormal * owner->GetCapsuleComponent()->GetScaledCapsuleRadius() * 1.1f - move->GetActorLocation();
+	positionCorrection.Z = 0.0f;
 
 	// manually set rotation based on the wallrun direction
-	move->MoveUpdatedComponent(pos - move->GetActorLocation(), mWallrunDir.Rotation(), false);
+	move->MoveUpdatedComponent(positionCorrection, mWallrunDir.Rotation(), false);
 }
 
 bool USpecialMovementComponent::switchState(ESpecialMovementState newState)
@@ -343,4 +389,9 @@ bool USpecialMovementComponent::surfaceIsWallrunPossible(FVector surfaceNormal) 
 bool USpecialMovementComponent::isWallrunInputPressed() const
 {
 	return true;
+}
+
+double USpecialMovementComponent::calcAngleBetweenVectors(FVector a, FVector b)
+{
+	return FMath::Acos(FVector::DotProduct(a, b)) * 180.0f / PI;
 }

@@ -35,11 +35,11 @@ protected:
 public:	
 	// Called every frame
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
-	
+
 	// try to start wallrunning an a wall that was hit
 	void tryWallrun(const FHitResult& wallHit);
 
-	void ResetJump(int new_jump_count);
+	void OnLanded(const FHitResult& Hit);
 	void Jump();
 
 	float mRightAxis;
@@ -54,6 +54,14 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Status)
 	ESpecialMovementState mState;
 
+	/** Maximum inner angle to keep wallrunning, in degrees. Range 0.0f to 180.0f */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Settings)
+	float mMaxWallrunInnerAngle = 70.0f;
+
+	/** Maximum angle between character direction and wall to start wallrunning, in degrees. Range 0.0f to 90.0f*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Settings)
+	float mMaxWallrunStartAngle = 45.0f;
+
 private:
 	class ACharacter* owner;
 	class UCharacterMovementComponent* move;
@@ -63,20 +71,31 @@ private:
 		USER_JUMP,		/* user jumped off */
 		USER_STOP,		/* user stopped the wallrun input */
 		FALL_OFF,		/* user fell off */
-		HIT_GROUND		/* user hit the ground */
+		HIT_GROUND,		/* user hit the ground */
+		ANGLE_OUT_OF_BOUNDS	/* angle to keep wallrunning was exceeded */
 	};
 
 	float mDefaultGravityScale;
 	float mDefaultAirControl;
 	float mDefaultMaxWalkSpeed;
+
 	FVector mWallrunDir;
 	FVector mWallNormal;
 	FVector mWallImpact;
 	float mWallrunSpeed;
+
 	bool mClawIntoWall;
 	float mClawZTargetVelo;
 	float mClawSpeed;
 	float mClawTime;
+
+	bool mWallrunPrevention = false;
+	FTimerHandle mWallrunPreventTimer;
+	UFUNCTION()
+	void resetWallrunPrevention();
+	void setWallrunPrevention(float timeToPrevent);
+
+	void ResetJump(int new_jump_count);
 
 	ESpecialMovementState findWallrunSide(FVector wallNormal);
 	bool checkDirectionForWall(FHitResult& hit, FVector direction, bool debug = false);
@@ -93,11 +112,13 @@ private:
 	// start to wallclaw, claw duration ~= 1 / speed (seconds)
 	void startWallClaw(float speed, float targetZVelocity);
 	void endWallClaw();
-	bool isWallrunning(bool considerUp = false) const;
 
+	bool isWallrunning(bool considerUp = false) const;
 	void startWallrun(const FHitResult& wallHit);
 	void endWallrun(EWallrunEndReason endReason);
 	void updateWallrun(float time);
+
+	double calcAngleBetweenVectors(FVector a, FVector b);
 
 	bool switchState(ESpecialMovementState newState);
 };
