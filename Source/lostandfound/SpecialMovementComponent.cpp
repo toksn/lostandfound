@@ -38,6 +38,9 @@ void USpecialMovementComponent::BeginPlay()
 
 	mWallrunSpeed = move->MaxWalkSpeed;
 
+	mMaxWallrunInnerAngle = FMath::Clamp(mMaxWallrunInnerAngle, 45.0f, 180.0f);
+	mMaxWallrunStartAngle = FMath::Clamp(mMaxWallrunStartAngle, 0.0f, 90.0f);
+
 	// slowmo wallrun for testing
 	// mWallrunSpeed *= 0.1f;
 	// mWallrunGravity = 0.005f;
@@ -164,9 +167,10 @@ void USpecialMovementComponent::tryWallrun(const FHitResult& wallHit)
 		if (surfaceIsWallrunPossible(wallHit.ImpactNormal)) {
 			// check angle between new and old wall
 			double angle = calcAngleBetweenVectors(wallHit.ImpactNormal, mWallNormal);
-
 			GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Yellow, FString::Printf(TEXT("hit something while wallrunning, angle diff: %f"), angle));
 			if (angle < mMaxWallrunInnerAngle) {
+				DrawDebugLine(GetWorld(), wallHit.ImpactPoint, wallHit.ImpactPoint + (wallHit.ImpactNormal * 100.0f), FColor::Blue, false, 40.0f, 0U, 5.0f);
+				DrawDebugLine(GetWorld(), mWallImpact, mWallImpact + (mWallNormal * 100.0f), FColor::Purple, false, 40.0f, 0U, 5.0f);
 				mWallNormal = wallHit.ImpactNormal;
 				mWallImpact = wallHit.ImpactPoint;
 				mWallrunDir = calcWallrunDir(mWallNormal, mState);
@@ -202,7 +206,7 @@ void USpecialMovementComponent::startWallrun(const FHitResult& wallHit)
 	}
 
 	double const angle = calcAngleBetweenVectors(wallHit.ImpactNormal, -side);
-	GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Yellow, FString::Printf(TEXT("hit something while wallrunning, angle diff: %f"), angle));
+	GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Purple, FString::Printf(TEXT("start wallrunning, angle: %f"), angle));
 	if (angle > mMaxWallrunStartAngle) {
 		// too straight to begin wallrun left / right
 		// TODO: wallrun up
@@ -307,7 +311,7 @@ void USpecialMovementComponent::updateWallrun(float time)
 	}
 
 	// correct wallrun position
-	FVector positionCorrection = mWallImpact + mWallNormal * owner->GetCapsuleComponent()->GetScaledCapsuleRadius() * 1.1f - move->GetActorLocation();
+	FVector positionCorrection = mWallImpact + mWallNormal * owner->GetCapsuleComponent()->GetScaledCapsuleRadius() * 1.2f - move->GetActorLocation();
 	positionCorrection.Z = 0.0f;
 
 	// manually set rotation based on the wallrun direction
