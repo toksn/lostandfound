@@ -58,6 +58,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Settings, meta = (ClampMin = "45.0", ClampMax = "180.0", UIMin = "45.0", UIMax = "180.0"))
 	float mMaxWallrunInnerAngle = 70.0f;
 
+	/** Maximum outer angle to keep wallrunning, in degrees. Range 45.0f to 180.0f */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Settings, meta = (ClampMin = "45.0", ClampMax = "180.0", UIMin = "45.0", UIMax = "180.0"))
+	float mMaxWallrunOuterAngle = 70.0f;
+
 	/** Maximum angle between character direction and wall to start wallrunning, in degrees. Range 0.0f to 90.0f*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Settings, meta = (ClampMin = "0.0", ClampMax = "90.0", UIMin = "0.0", UIMax = "90.0"))
 	float mMaxWallrunStartAngle = 45.0f;
@@ -98,7 +102,7 @@ private:
 	void ResetJump(int new_jump_count);
 
 	ESpecialMovementState findWallrunSide(FVector wallNormal);
-	bool checkDirectionForWall(FHitResult& hit, FVector direction, bool debug = false);
+	bool checkDirectionForWall(FHitResult& hit, FVector const & origin, FVector direction, bool debug = false);
 	FVector calcWallrunDir(FVector wallNormal, ESpecialMovementState state);
 	FVector calcLaunchVelocity() const;
 
@@ -119,6 +123,7 @@ private:
 	void updateWallrun(float time);
 
 	double calcAngleBetweenVectors(FVector a, FVector b);
+	bool isValidInnerOuterAngleDiff(FVector const & origin, const FHitResult& hit);
 
 	bool switchState(ESpecialMovementState newState);
 };
