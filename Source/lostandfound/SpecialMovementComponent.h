@@ -102,7 +102,7 @@ private:
 	void ResetJump(int new_jump_count);
 
 	ESpecialMovementState findWallrunSide(FVector wallNormal);
-	bool checkDirectionForWall(FHitResult& hit, FVector const & origin, FVector direction, bool debug = false);
+	bool checkDirectionForWall(FHitResult& hit, FVector const & origin, FVector direction);
 	FVector calcWallrunDir(FVector wallNormal, ESpecialMovementState state);
 	FVector calcLaunchVelocity() const;
 

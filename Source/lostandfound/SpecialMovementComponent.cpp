@@ -11,6 +11,8 @@
 #define IGNORE_SELF_COLLISION_PARAM FCollisionQueryParams(FName(TEXT("KnockTraceSingle")), true, owner)
 #define WALLRUN_REPLACEMENT owner->GetCapsuleComponent()->GetScaledCapsuleRadius() * 1.2f
 
+#define DRAW_DEBUG
+
 // Sets default values for this component's properties
 USpecialMovementComponent::USpecialMovementComponent()
 {
@@ -122,16 +124,16 @@ void USpecialMovementComponent::clampHorizontalVelocity()
 	}
 }
 
-bool USpecialMovementComponent::checkDirectionForWall(FHitResult& hit, FVector const & origin, FVector direction, bool debug)
+bool USpecialMovementComponent::checkDirectionForWall(FHitResult& hit, FVector const & origin, FVector direction)
 {
 	/* check for the current wall next to the character with a single trace line */
 	float const traceLength = owner->GetCapsuleComponent()->GetCollisionShape().Capsule.Radius * 2.0f; // TODO: make member variable and expose to BP
 	direction.Normalize();
 	direction *= traceLength;
 
-	if (debug) {
-		DrawDebugLine(GetWorld(), origin, origin + direction, FColor::Red, false, 40.0f, 0U, 5.0f);
-	}
+#ifdef DRAW_DEBUG
+	DrawDebugLine(GetWorld(), origin, origin + direction, FColor::Red, false, 40.0f, 0U, 5.0f);
+#endif
 
 	return GetWorld()->LineTraceSingleByChannel(hit, origin, origin + direction, ECollisionChannel::ECC_Visibility, IGNORE_SELF_COLLISION_PARAM);
 }
@@ -148,7 +150,9 @@ void USpecialMovementComponent::startWallClaw(float speed, float targetZVelocity
 void USpecialMovementComponent::endWallClaw()
 {
 	if (mClawIntoWall) {
+#ifdef DRAW_DEBUG
 		GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Green, "stopped claw into wall");
+#endif
 		mClawIntoWall = false;
 		move->GravityScale = mWallrunGravity;
 	}
@@ -167,7 +171,9 @@ void USpecialMovementComponent::tryWallrun(const FHitResult& wallHit)
 
 	if (isWallrunning()) {
 		if (surfaceIsWallrunPossible(wallHit.ImpactNormal)) {
+#ifdef DRAW_DEBUG
 			GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Yellow, FString::Printf(TEXT("hit something while wallrunning, check for blocking geometry.")));
+#endif
 
 			// This wallhit has to get a corrected position because the impact might be on the other side of the player capsule
 			FHitResult correctedWallhit = wallHit;
@@ -186,7 +192,9 @@ void USpecialMovementComponent::tryWallrun(const FHitResult& wallHit)
 		}
 	}
 
+#ifdef DRAW_DEBUG
 	DrawDebugLine(GetWorld(), wallHit.ImpactPoint, wallHit.ImpactPoint + (wallHit.ImpactNormal * 100.0f), FColor::Yellow, false, 40.0f, 0U, 5.0f);
+#endif
 
 	if (surfaceIsWallrunPossible(wallHit.ImpactNormal)) {
 		startWallrun(wallHit);
@@ -208,7 +216,9 @@ void USpecialMovementComponent::startWallrun(const FHitResult& wallHit)
 	}
 
 	double const angle = calcAngleBetweenVectors(wallHit.ImpactNormal, -side);
+#ifdef DRAW_DEBUG
 	GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Purple, FString::Printf(TEXT("start wallrunning, angle: %f"), angle));
+#endif
 	if (angle > mMaxWallrunStartAngle) {
 		// too straight to begin wallrun left / right
 		// TODO: wallrun up
@@ -288,7 +298,7 @@ void USpecialMovementComponent::updateWallrun(float time)
 	}
 
 	FHitResult hit;
-	if (checkDirectionForWall(hit, move->GetActorLocation(), - mWallNormal, true) == false) {
+	if (checkDirectionForWall(hit, move->GetActorLocation(), - mWallNormal) == false) {
 		if (mMaxWallrunOuterAngle <= 70.0f) {
 			endWallrun(FALL_OFF);
 			return;
@@ -297,7 +307,7 @@ void USpecialMovementComponent::updateWallrun(float time)
 			// when sharp outer angles have to be detected
 			// check another trace backwards from a position that should lie in front of a sharp outer wall turn
 			FVector capsuleRight = move->GetActorLocation() - mWallNormal * WALLRUN_REPLACEMENT * 1.2f;
-			if (checkDirectionForWall(hit, capsuleRight, -mWallrunDir, true) == false) {
+			if (checkDirectionForWall(hit, capsuleRight, -mWallrunDir) == false) {
 				endWallrun(FALL_OFF);
 				return;
 			}
@@ -315,14 +325,18 @@ void USpecialMovementComponent::updateWallrun(float time)
 	mWallrunDir = calcWallrunDir(mWallNormal, mState);
 
 	// set velocity according to the wall direction
+#ifdef DRAW_DEBUG
 	DrawDebugLine(GetWorld(), owner->GetActorLocation(), owner->GetActorLocation() + (mWallrunDir * mWallrunSpeed), FColor::Blue, false, -1.0f, 0U, 5.0f);
+#endif
 	move->Velocity.X = mWallrunDir.X * mWallrunSpeed;
 	move->Velocity.Y = mWallrunDir.Y * mWallrunSpeed;
 
 	// manually calc velocity Z when clawing into the wall
 	if (mClawIntoWall) {
 		mClawTime += time;
+#ifdef DRAW_DEBUG
 		GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Green, FString::Printf(TEXT("mClawTime: %f, velo: %f, targetVelo: %f"), mClawTime, move->Velocity.Z, mClawZTargetVelo));
+#endif
 		move->Velocity.Z = FMath::FInterpTo(move->Velocity.Z, mClawZTargetVelo, mClawTime, mClawSpeed);
 		if (move->Velocity.Z == mClawZTargetVelo) {
 			endWallClaw();
@@ -394,8 +408,10 @@ FVector USpecialMovementComponent::calcLaunchVelocity() const
 
 	launchDir.Z = move->JumpZVelocity; // maybe additive would be better?
 
+#ifdef DRAW_DEBUG
 	DrawDebugLine(GetWorld(), owner->GetActorLocation(), owner->GetActorLocation() + launchDir, FColor::Green, false, 40.0f, 0U, 5.0f);
 	GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, *launchDir.ToString());
+#endif
 
 	return launchDir;
 }
@@ -432,19 +448,17 @@ bool USpecialMovementComponent::isValidInnerOuterAngleDiff(FVector const & origi
 	FVector const b = hitdirection;
 	bool const isInnerAngle = (FVector::DotProduct(a + b, center) > 0.0 && FVector::DotProduct(FVector::CrossProduct(a, center), FVector::CrossProduct(b, center)) < 0.0);
 
-	FColor debugCol = FColor::Green;
-	float maxAngle = mMaxWallrunOuterAngle;
-	if (isInnerAngle) {
-		debugCol = FColor::Yellow;
-		maxAngle = mMaxWallrunInnerAngle;
-	}
+	float maxAngle = isInnerAngle? mMaxWallrunInnerAngle : mMaxWallrunOuterAngle;
 
+#ifdef DRAW_DEBUG
 	if (angle > 0.005f) {
+		FColor debugCol = isInnerAngle ? FColor::Yellow : FColor::Green;
 		DrawDebugLine(GetWorld(), hit.ImpactPoint + a * 100, hit.ImpactPoint, debugCol, false, 100.0f, 0U, 5.0f);
 		DrawDebugLine(GetWorld(), hit.ImpactPoint + b * 100, hit.ImpactPoint, debugCol, false, 100.0f, 0U, 5.0f);
 		DrawDebugCrosshairs(GetWorld(), origin, FRotator::ZeroRotator, 30.0f, FColor::Blue, false, 100.0f, 0U);
 		GEngine->AddOnScreenDebugMessage(-1, 15.0f, debugCol, FString::Printf(TEXT("angle: %f"), angle));
 	}
+#endif
 
 	if (angle > maxAngle) {
 		return false;
