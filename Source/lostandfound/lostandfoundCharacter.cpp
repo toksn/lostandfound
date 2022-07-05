@@ -31,8 +31,9 @@ AlostandfoundCharacter::AlostandfoundCharacter()
 
 	// Note: For faster iteration times these variables, and many more, can be tweaked in the Character Blueprint
 	// instead of recompiling to adjust them
-	GetCharacterMovement()->JumpZVelocity = 700.f;
+	GetCharacterMovement()->JumpZVelocity = 860.0f;
 	GetCharacterMovement()->AirControl = 0.35f;
+	GetCharacterMovement()->GravityScale = 2.6f;
 	GetCharacterMovement()->MaxWalkSpeed = 1000.f;
 	GetCharacterMovement()->MinAnalogWalkSpeed = 20.f;
 	GetCharacterMovement()->BrakingDecelerationWalking = 5000.f;
