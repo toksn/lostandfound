@@ -6,6 +6,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/SpringArmComponent.h"
 #include "Components/CapsuleComponent.h"
 
 #define IGNORE_SELF_COLLISION_PARAM FCollisionQueryParams(FName(TEXT("KnockTraceSingle")), true, owner)
@@ -31,16 +32,6 @@ void USpecialMovementComponent::BeginPlay()
 
 	mState = ESpecialMovementState::NONE;
 
-	owner = Cast<ACharacter>(GetOwner());
-	move = owner->GetCharacterMovement();
-
-	// get default values to reset after wallrun
-	mDefaultGravityScale = move->GravityScale;
-	mDefaultMaxWalkSpeed = move->MaxWalkSpeed;
-	mDefaultAirControl = move->AirControl;
-
-	mWallrunSpeed = move->MaxWalkSpeed;
-
 	mMaxWallrunInnerAngle = FMath::Clamp(mMaxWallrunInnerAngle, 45.0f, 180.0f);
 	mMaxWallrunInnerAngle = FMath::Clamp(mMaxWallrunOuterAngle, 45.0f, 180.0f);
 	mMaxWallrunStartAngle = FMath::Clamp(mMaxWallrunStartAngle, 0.0f, 90.0f);
@@ -50,6 +41,18 @@ void USpecialMovementComponent::BeginPlay()
 	// mWallrunGravity = 0.005f;
 }
 
+void USpecialMovementComponent::Init(ACharacter* parent, USpringArmComponent* camera) {
+	owner = parent;
+	move = owner->GetCharacterMovement();
+	cameraStick = camera;
+
+	// get default values to reset after wallrun
+	mDefaultGravityScale = move->GravityScale;
+	mDefaultMaxWalkSpeed = move->MaxWalkSpeed;
+	mDefaultAirControl = move->AirControl;
+
+	mWallrunSpeed = move->MaxWalkSpeed;
+}
 
 // Called every frame
 void USpecialMovementComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -178,7 +181,10 @@ void USpecialMovementComponent::tryWallrun(const FHitResult& wallHit)
 			// This wallhit has to get a corrected position because the impact might be on the other side of the player capsule
 			FHitResult correctedWallhit = wallHit;
 			correctedWallhit.ImpactPoint = mWallImpact + mWallrunDir * owner->GetCapsuleComponent()->GetScaledCapsuleRadius() * 0.9f;
-			if (isValidInnerOuterAngleDiff(move->GetActorLocation(), correctedWallhit)) {
+			double angle = 0.0f;
+			if (isValidInnerOuterAngleDiff(move->GetActorLocation(), correctedWallhit, &angle)) {
+				addCameraRotation(FRotator(0.0f, angle, 0.0f));
+
 				mWallNormal = wallHit.ImpactNormal;
 				mWallImpact = wallHit.ImpactPoint;
 				mWallrunDir = calcWallrunDir(mWallNormal, mState);
@@ -229,6 +235,10 @@ void USpecialMovementComponent::startWallrun(const FHitResult& wallHit)
 		return;
 	}
 
+	if (mCorrectCamera && cameraStick) {
+		cameraStick->bEnableCameraRotationLag = true;
+	}
+
 	move->GravityScale = mWallrunGravity;
 	// claw onto the wall by slowing down the sliding when velocity is below gravity level
 	if (move->Velocity.Z < move->GetGravityZ()) {
@@ -243,6 +253,7 @@ void USpecialMovementComponent::startWallrun(const FHitResult& wallHit)
 
 	move->AirControl = 0.0f;
 	move->bOrientRotationToMovement = false;
+	cameraStick->bEnableCameraRotationLag = true;
 }
 
 void USpecialMovementComponent::resetWallrunPrevention()
@@ -273,6 +284,10 @@ void USpecialMovementComponent::endWallrun(EWallrunEndReason endReason)
 	move->GravityScale = mDefaultGravityScale;
 	move->AirControl = mDefaultAirControl;
 	move->bOrientRotationToMovement = true;
+
+	if (mCorrectCamera && cameraStick) {
+		cameraStick->bEnableCameraRotationLag = false;
+	}
 
 	if (endReason == USER_JUMP) {
 		ResetJump(owner->JumpCurrentCount - mRegainJumpsAfterWalljump);
@@ -314,11 +329,13 @@ void USpecialMovementComponent::updateWallrun(float time)
 		}
 	}
 
-	if (isValidInnerOuterAngleDiff(move->GetActorLocation(), hit) == false) {
+	double angle = 0.0f;
+	if (isValidInnerOuterAngleDiff(move->GetActorLocation(), hit, &angle) == false) {
 		// end wallrun with angle out of bounds to prevent a wallrunning loop in an inner corner.
 		endWallrun(EWallrunEndReason::ANGLE_OUT_OF_BOUNDS);
 		return;
 	}
+	addCameraRotation(FRotator(0.0f, angle, 0.0f));
 
 	mWallNormal = hit.ImpactNormal;
 	mWallImpact = hit.ImpactPoint;
@@ -436,7 +453,7 @@ double USpecialMovementComponent::calcAngleBetweenVectors(FVector a, FVector b)
 }
 
 
-bool USpecialMovementComponent::isValidInnerOuterAngleDiff(FVector const & origin, const FHitResult& hit)
+bool USpecialMovementComponent::isValidInnerOuterAngleDiff(FVector const & origin, const FHitResult& hit, double * angleOut)
 {
 	FVector const hitdirection = FVector::CrossProduct(hit.ImpactNormal, FVector(0, 0, mState == ESpecialMovementState::WALLRUN_LEFT ? 1 : -1));
 	double const angle = calcAngleBetweenVectors(mWallrunDir, hitdirection);
@@ -460,8 +477,33 @@ bool USpecialMovementComponent::isValidInnerOuterAngleDiff(FVector const & origi
 	}
 #endif
 
+	if (angleOut) {
+		if ((isInnerAngle && mState == ESpecialMovementState::WALLRUN_LEFT) ||
+			(isInnerAngle == false && mState == ESpecialMovementState::WALLRUN_RIGHT)) {
+
+			*angleOut = angle;
+		}
+		else {
+			*angleOut = -angle;
+		}
+	}
+
 	if (angle > maxAngle) {
 		return false;
 	}
+
 	return true;
+}
+
+void USpecialMovementComponent::addCameraRotation(FRotator const & addRotation)
+{
+	if (mCorrectCamera == false) {
+		return;
+	}
+
+	AController* controller = owner->GetController();
+	if (controller) {
+		FRotator const currentRotation = controller->GetControlRotation();
+		controller->SetControlRotation(currentRotation + addRotation);
+	}
 }

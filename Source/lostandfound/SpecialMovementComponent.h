@@ -33,6 +33,8 @@ protected:
 	virtual void BeginPlay() override;
 
 public:	
+	void Init(ACharacter* parent, class USpringArmComponent* camera = NULL);
+
 	// Called every frame
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
@@ -50,6 +52,10 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Settings)
 	int mRegainJumpsAfterWalljump = 1;
+
+	/* Correct the camera while performing special moves. This needs the SpringArmComponent to be set in the Init function. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Settings)
+	bool mCorrectCamera = true;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Status)
 	ESpecialMovementState mState;
@@ -69,6 +75,7 @@ public:
 private:
 	class ACharacter* owner;
 	class UCharacterMovementComponent* move;
+	class USpringArmComponent* cameraStick;
 
 	enum EWallrunEndReason
 	{
@@ -123,7 +130,8 @@ private:
 	void updateWallrun(float time);
 
 	double calcAngleBetweenVectors(FVector a, FVector b);
-	bool isValidInnerOuterAngleDiff(FVector const & origin, const FHitResult& hit);
+	bool isValidInnerOuterAngleDiff(FVector const & origin, const FHitResult& hit, double * angleOut = NULL);
+	void addCameraRotation(FRotator const & addRotation);
 
 	bool switchState(ESpecialMovementState newState);
 };
