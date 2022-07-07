@@ -7,6 +7,7 @@
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 
 #define IGNORE_SELF_COLLISION_PARAM FCollisionQueryParams(FName(TEXT("KnockTraceSingle")), true, owner)
@@ -42,10 +43,11 @@ void USpecialMovementComponent::BeginPlay()
 	// mWallrunGravity = 0.005f;
 }
 
-void USpecialMovementComponent::Init(ACharacter* parent, USpringArmComponent* camera) {
+void USpecialMovementComponent::Init(ACharacter* parent, UCameraComponent* parentCamera, USpringArmComponent* parentCameraSpringArm) {
 	owner = parent;
 	move = owner->GetCharacterMovement();
-	cameraStick = camera;
+	cameraStick = parentCameraSpringArm;
+	camera = parentCamera;
 
 	// get default values to reset after wallrun
 	mDefaultGravityScale = move->GravityScale;
@@ -404,7 +406,8 @@ FVector USpecialMovementComponent::calcLaunchVelocity(bool jumpBoostEnabled) con
 		}
 	}
 	else if (move->IsFalling()) {
-		launchDir = mRightAxis * owner->GetActorRightVector() + mForwardAxis * owner->GetActorForwardVector();
+		// owner->GetActorRightAxis might be in forwardvector direction because bOrientToMovement and viceversa, use camera instead
+		launchDir = mRightAxis * camera->GetRightVector() + mForwardAxis * camera->GetForwardVector();
 		launchDir.Normalize();
 		launchDir *= move->JumpZVelocity;
 	}

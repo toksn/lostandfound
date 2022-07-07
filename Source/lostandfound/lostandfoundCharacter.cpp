@@ -122,7 +122,7 @@ void AlostandfoundCharacter::BeginPlay()
 	Super::BeginPlay();
 
 	GetCapsuleComponent()->OnComponentHit.AddDynamic(this, &AlostandfoundCharacter::OnPlayerHit);
-	specialMoves->Init(this, CameraBoom);
+	specialMoves->Init(this, FollowCamera, CameraBoom);
 }
 
 void AlostandfoundCharacter::TurnAtRate(float Rate)

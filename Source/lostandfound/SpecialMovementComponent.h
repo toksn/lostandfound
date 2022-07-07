@@ -33,7 +33,7 @@ protected:
 	virtual void BeginPlay() override;
 
 public:	
-	void Init(ACharacter* parent, class USpringArmComponent* camera = NULL);
+	void Init(ACharacter* parent, class UCameraComponent* parentCamera, class USpringArmComponent* parentCameraSpringArm = NULL);
 
 	// Called every frame
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
@@ -80,6 +80,7 @@ private:
 	class ACharacter* owner;
 	class UCharacterMovementComponent* move;
 	class USpringArmComponent* cameraStick;
+	class UCameraComponent* camera;
 
 	enum EWallrunEndReason
 	{
