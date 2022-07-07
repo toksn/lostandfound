@@ -51,8 +51,6 @@ void USpecialMovementComponent::Init(ACharacter* parent, USpringArmComponent* ca
 	mDefaultGravityScale = move->GravityScale;
 	mDefaultMaxWalkSpeed = move->MaxWalkSpeed;
 	mDefaultAirControl = move->AirControl;
-
-	mWallrunSpeed = move->MaxWalkSpeed;
 }
 
 // Called every frame
@@ -215,6 +213,9 @@ void USpecialMovementComponent::startWallrun(const FHitResult& wallHit)
 	if (mCorrectCamera && cameraStick) {
 		cameraStick->bEnableCameraRotationLag = true;
 	}
+
+	// use current velocity or maxWalkSpeed for the wallrun
+	mWallrunSpeed = FMath::Max(FVector2D(move->Velocity).Length(), move->MaxWalkSpeed);
 
 	move->GravityScale = mWallrunGravity;
 	// claw onto the wall by slowing down the sliding when velocity is below gravity level
