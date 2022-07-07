@@ -68,9 +68,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Settings, meta = (ClampMin = "45.0", ClampMax = "180.0", UIMin = "45.0", UIMax = "180.0"))
 	float mMaxWallrunOuterAngle = 70.0f;
 
-	/** Maximum angle between character direction and wall to start wallrunning, in degrees. Range 0.0f to 90.0f*/
+	/** Maximum angle between character direction and wall to start wallrunning, in degrees. Range 0.0f to 90.0f */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Settings, meta = (ClampMin = "0.0", ClampMax = "90.0", UIMin = "0.0", UIMax = "90.0"))
 	float mMaxWallrunStartAngle = 45.0f;
+
+	/** Multiplier to the horizontal velocity when jump boost is received. Multiplier of 1.0 won't boost (just keep the current velocity). Range 1.0f to 5.0f */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Settings, meta = (ClampMin = "1.0", ClampMax = "5.0", UIMin = "1.0", UIMax = "5.0"))
+	float mJumpBoostMultiplier = 1.7f;
 
 private:
 	class ACharacter* owner;
@@ -111,14 +115,12 @@ private:
 	ESpecialMovementState findWallrunSide(FVector wallNormal);
 	bool checkDirectionForWall(FHitResult& hit, FVector const & origin, FVector direction);
 	FVector calcWallrunDir(FVector wallNormal, ESpecialMovementState state);
-	FVector calcLaunchVelocity() const;
+	FVector calcLaunchVelocity(bool jumpBoostEnabled = true) const;
 
 	bool surfaceIsWallrunPossible(FVector surfaceNormal) const;
 	bool isWallrunInputPressed() const;
 
-	void setHorizontalVelocity(FVector2D vel);
-	FVector2D getHorizontalVelocity();
-	void clampHorizontalVelocity();
+	void clampHorizontalVelocity(FVector & velocity, float const maxSpeed) const;
 
 	// start to wallclaw, claw duration ~= 1 / speed (seconds)
 	void startWallClaw(float speed, float targetZVelocity);

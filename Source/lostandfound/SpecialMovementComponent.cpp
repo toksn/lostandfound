@@ -10,7 +10,8 @@
 #include "Components/CapsuleComponent.h"
 
 #define IGNORE_SELF_COLLISION_PARAM FCollisionQueryParams(FName(TEXT("KnockTraceSingle")), true, owner)
-#define WALLRUN_REPLACEMENT owner->GetCapsuleComponent()->GetScaledCapsuleRadius() * 1.2f
+#define CAPSULE_RADIUS owner->GetCapsuleComponent()->GetScaledCapsuleRadius()
+#define WALLRUN_REPLACEMENT CAPSULE_RADIUS * 1.2f
 
 #define DRAW_DEBUG
 
@@ -62,8 +63,6 @@ void USpecialMovementComponent::TickComponent(float DeltaTime, ELevelTick TickTy
 	if (isWallrunning()) {
 		updateWallrun(DeltaTime);
 	}
-
-	clampHorizontalVelocity();
 }
 
 void USpecialMovementComponent::OnLanded(const FHitResult& Hit)
@@ -79,51 +78,29 @@ void USpecialMovementComponent::ResetJump(int new_jump_count)
 
 void USpecialMovementComponent::Jump()
 {
-	FVector launchVelo;
+	FVector launchVelo = FVector::ZeroVector;
 	if (isWallrunning()) {
 		// jump off wall
 		launchVelo = calcLaunchVelocity();
 		endWallrun(EWallrunEndReason::USER_JUMP);
 	}
 	else if (owner->JumpCurrentCount < owner->JumpMaxCount) {
-		//if (move->IsFalling()) {
-			//PlayAnimMontage()
-		//}	
 		owner->JumpCurrentCount++;
 		launchVelo = calcLaunchVelocity();
 	}
 
-	if (launchVelo.Length() > 0) {
+	if (launchVelo != FVector::ZeroVector) {
 		owner->LaunchCharacter(launchVelo, false, true);
 	}
-
-	// are we close to an edge?
-		// velocity (direction) is at least 20° off the edge direction
-			// setMaxWalkSpeed * 2.0f;
-			// setVelocity *= 2.0f;
-			// startResetMaxWalkSpeedTimer(3 seconds)
-				// Interp the maxWalkSpeed back
 }
 
-void USpecialMovementComponent::setHorizontalVelocity(FVector2D vel)
+void USpecialMovementComponent::clampHorizontalVelocity(FVector & velocity, float const maxSpeed) const
 {
-	move->Velocity.X = vel.X;
-	move->Velocity.Y = vel.Y;
-}
-
-FVector2D USpecialMovementComponent::getHorizontalVelocity()
-{
-	return FVector2D(move->Velocity.X, move->Velocity.Y);
-}
-
-void USpecialMovementComponent::clampHorizontalVelocity()
-{
-	if (move->IsFalling()) {
-		FVector2D vel = getHorizontalVelocity();
-		if (vel.Length() > move->MaxWalkSpeed) {
-			float speedFactor = vel.Length() / move->MaxWalkSpeed;
-			setHorizontalVelocity(vel / speedFactor);
-		}
+	FVector2D vel(velocity);
+	if (vel.Length() > maxSpeed) {
+		float speedFactor = maxSpeed / vel.Length();
+		velocity.X = vel.X * speedFactor;
+		velocity.Y = vel.Y * speedFactor;
 	}
 }
 
@@ -180,7 +157,7 @@ void USpecialMovementComponent::tryWallrun(const FHitResult& wallHit)
 
 			// This wallhit has to get a corrected position because the impact might be on the other side of the player capsule
 			FHitResult correctedWallhit = wallHit;
-			correctedWallhit.ImpactPoint = mWallImpact + mWallrunDir * owner->GetCapsuleComponent()->GetScaledCapsuleRadius() * 0.9f;
+			correctedWallhit.ImpactPoint = mWallImpact + mWallrunDir * CAPSULE_RADIUS * 0.9f;
 			double angle = 0.0f;
 			if (isValidInnerOuterAngleDiff(move->GetActorLocation(), correctedWallhit, &angle)) {
 				addCameraRotation(FRotator(0.0f, angle, 0.0f));
@@ -253,7 +230,6 @@ void USpecialMovementComponent::startWallrun(const FHitResult& wallHit)
 
 	move->AirControl = 0.0f;
 	move->bOrientRotationToMovement = false;
-	cameraStick->bEnableCameraRotationLag = true;
 }
 
 void USpecialMovementComponent::resetWallrunPrevention()
@@ -404,26 +380,64 @@ ESpecialMovementState USpecialMovementComponent::findWallrunSide(FVector wallNor
 	}
 }
 
-FVector USpecialMovementComponent::calcLaunchVelocity() const
+FVector USpecialMovementComponent::calcLaunchVelocity(bool jumpBoostEnabled) const
 {
 	FVector launchDir(0, 0, 0);
+	bool clampVelo = true;
+
 	if (isWallrunning()) {
 		switch (mState) {
 		case ESpecialMovementState::WALLRUN_LEFT:
 		case ESpecialMovementState::WALLRUN_RIGHT:
 		case ESpecialMovementState::WALLRUN_UP:
 			launchDir = mWallNormal;
+			launchDir.Normalize();
+			launchDir *= move->JumpZVelocity;
 			break;
 		}
 	}
 	else if (move->IsFalling()) {
 		launchDir = mRightAxis * owner->GetActorRightVector() + mForwardAxis * owner->GetActorForwardVector();
+		launchDir.Normalize();
+		launchDir *= move->JumpZVelocity;
+	}
+	else if (jumpBoostEnabled && mState == ESpecialMovementState::NONE) {
+		// Jumpboost: check for a close edge
+		FVector movedir = owner->GetActorForwardVector();
+		float const length = owner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + move->MaxStepHeight * 2.0f;
+		float const tolerance = CAPSULE_RADIUS * 1.5f;
+		// capsule radius is needed to offset from the center the actor
+		FVector traceDownOrigin = move->GetActorLocation() + movedir * (CAPSULE_RADIUS + tolerance);
+
+		FHitResult hit;
+		bool onEdge = false == GetWorld()->LineTraceSingleByChannel(hit, traceDownOrigin, traceDownOrigin - FVector(0.0f, 0.0f, length), ECollisionChannel::ECC_Visibility, IGNORE_SELF_COLLISION_PARAM);
+
+#ifdef DRAW_DEBUG
+		FColor debugCol = onEdge ? FColor::Green : FColor::Red;
+		DrawDebugLine(GetWorld(), traceDownOrigin, traceDownOrigin - FVector(0.0f, 0.0f, length), debugCol, false, 100.0f, 0U, 5.0f);
+		if (onEdge) {
+			GEngine->AddOnScreenDebugMessage(-1, 15.0f, debugCol, FString::Printf(TEXT("JUMP BOOST RECEIVED!")));
+		}
+#endif
+
+		if (onEdge) {
+			// boost by multiplier - 1.0f to offset for the current velocity
+			launchDir.X = move->Velocity.X * (mJumpBoostMultiplier - 1.0f);
+			launchDir.Y = move->Velocity.Y * (mJumpBoostMultiplier - 1.0f);
+		}
+		clampVelo = false;
 	}
 
-	launchDir.Normalize();
-	launchDir *= move->JumpZVelocity;
+	if (clampVelo) {
+		// do not gain more than the current horizontal velocity
+		FVector launchVelo = move->Velocity + launchDir;
+		float const currentHorizontalSpeed = FVector2D(move->Velocity).Length();
+		clampHorizontalVelocity(launchVelo, currentHorizontalSpeed);
 
-	launchDir.Z = move->JumpZVelocity; // maybe additive would be better?
+		launchDir = launchVelo - move->Velocity;
+	}
+
+	launchDir.Z = move->JumpZVelocity;
 
 #ifdef DRAW_DEBUG
 	DrawDebugLine(GetWorld(), owner->GetActorLocation(), owner->GetActorLocation() + launchDir, FColor::Green, false, 40.0f, 0U, 5.0f);
