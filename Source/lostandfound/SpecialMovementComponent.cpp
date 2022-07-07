@@ -67,6 +67,7 @@ void USpecialMovementComponent::OnLanded(const FHitResult& Hit)
 {
 	ResetJump(0);
 	resetWallrunPrevention();
+	mJumpMidAirAllowed = false;
 }
 
 void USpecialMovementComponent::ResetJump(int new_jump_count)
@@ -79,12 +80,14 @@ void USpecialMovementComponent::Jump()
 	FVector launchVelo = FVector::ZeroVector;
 	if (isWallrunning()) {
 		// jump off wall
-		launchVelo = calcLaunchVelocity();
+		launchVelo = calcLaunchVelocity(false);
 		endWallrun(EWallrunEndReason::USER_JUMP);
 	}
 	else if (owner->JumpCurrentCount < owner->JumpMaxCount) {
-		owner->JumpCurrentCount++;
-		launchVelo = calcLaunchVelocity();
+		if (move->IsFalling() == false || mJumpMidAirAllowed) {
+			owner->JumpCurrentCount++;
+			launchVelo = calcLaunchVelocity(true);
+		}
 	}
 
 	if (launchVelo != FVector::ZeroVector) {
@@ -266,8 +269,11 @@ void USpecialMovementComponent::endWallrun(EWallrunEndReason endReason)
 		cameraStick->bEnableCameraRotationLag = false;
 	}
 
+	mJumpMidAirAllowed = false;
+
 	if (endReason == USER_JUMP) {
 		ResetJump(owner->JumpCurrentCount - mRegainJumpsAfterWalljump);
+		mJumpMidAirAllowed = true;
 		// TODO: this does not feel good, deactivated for now. Do we really need this?
 		// setWallrunPrevention(0.05f);
 	}
@@ -442,7 +448,7 @@ FVector USpecialMovementComponent::calcLaunchVelocity(bool jumpBoostEnabled) con
 
 #ifdef DRAW_DEBUG
 	DrawDebugLine(GetWorld(), owner->GetActorLocation(), owner->GetActorLocation() + launchDir, FColor::Green, false, 40.0f, 0U, 5.0f);
-	GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, *launchDir.ToString());
+	GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, FString::Printf(TEXT("IsFalling % d, launchDir %s"), move->IsFalling(), *launchDir.ToString()));
 #endif
 
 	return launchDir;

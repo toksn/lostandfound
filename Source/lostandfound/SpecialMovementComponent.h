@@ -104,6 +104,8 @@ private:
 	float mClawSpeed;
 	float mClawTime;
 
+	bool mJumpMidAirAllowed = false;
+
 	bool mWallrunPrevention = false;
 	FTimerHandle mWallrunPreventTimer;
 	UFUNCTION()
