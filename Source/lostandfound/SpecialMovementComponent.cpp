@@ -53,6 +53,11 @@ void USpecialMovementComponent::Init(ACharacter* parent, UCameraComponent* paren
 	mDefaultGravityScale = move->GravityScale;
 	mDefaultMaxWalkSpeed = move->MaxWalkSpeed;
 	mDefaultAirControl = move->AirControl;
+
+	// get default values to reset after slide
+	mDefaultGroundFriction = move->GroundFriction;
+	mDefaultBrakingDecelerationWalking = move->BrakingDecelerationWalking;
+	mDefaultMaxWalkSpeedCrouched = move->MaxWalkSpeedCrouched;
 }
 
 // Called every frame
@@ -62,6 +67,9 @@ void USpecialMovementComponent::TickComponent(float DeltaTime, ELevelTick TickTy
 
 	if (isWallrunning()) {
 		updateWallrun(DeltaTime);
+	}
+	else if (mState == ESpecialMovementState::SLIDE) {
+		updateSlide(DeltaTime);
 	}
 }
 
@@ -97,6 +105,11 @@ void USpecialMovementComponent::Jump()
 	}
 }
 
+void USpecialMovementComponent::Slide()
+{
+	startSlide();
+}
+
 void USpecialMovementComponent::clampHorizontalVelocity(FVector & velocity, float const maxSpeed) const
 {
 	FVector2D vel(velocity);
@@ -109,7 +122,7 @@ void USpecialMovementComponent::clampHorizontalVelocity(FVector & velocity, floa
 
 bool USpecialMovementComponent::checkDirectionForWall(FHitResult& hit, FVector const & origin, FVector direction)
 {
-	/* check for the current wall next to the character with a single trace line */
+	// check for the current wall next to the character with a single trace line
 	float const traceLength = owner->GetCapsuleComponent()->GetCollisionShape().Capsule.Radius * 2.0f; // TODO: make member variable and expose to BP
 	direction.Normalize();
 	direction *= traceLength;
@@ -355,8 +368,44 @@ void USpecialMovementComponent::updateWallrun(float time)
 
 bool USpecialMovementComponent::switchState(ESpecialMovementState newState)
 {
-	mState = newState;
-	return true;
+	bool applyChange = true;
+	switch (newState) {
+	case ESpecialMovementState::WALLRUN_UP:
+		applyChange = mState == ESpecialMovementState::NONE ||
+			mState == ESpecialMovementState::SLIDE ||
+			mState == ESpecialMovementState::WALLRUN_LEFT ||
+			mState == ESpecialMovementState::WALLRUN_RIGHT;
+		break;
+
+	case ESpecialMovementState::WALLRUN_LEFT:
+	case ESpecialMovementState::WALLRUN_RIGHT:
+		applyChange = mState == ESpecialMovementState::NONE ||
+			mState == ESpecialMovementState::SLIDE ||
+			mState == ESpecialMovementState::WALLRUN_UP;
+		break;
+
+	case ESpecialMovementState::SLIDE:
+		applyChange = mState == ESpecialMovementState::NONE;
+		break;
+
+	case ESpecialMovementState::LEDGE_PULL:
+		applyChange = mState == ESpecialMovementState::ON_LEDGE;
+		break;
+
+	case ESpecialMovementState::ON_LEDGE:
+		applyChange = isWallrunning(true) || mState == ESpecialMovementState::NONE;
+		break;
+
+	}
+
+	if (applyChange) {
+		if (mState == ESpecialMovementState::SLIDE && newState != ESpecialMovementState::NONE) {
+			endSlide(EWallrunEndReason::USER_STOP);
+		}
+		mState = newState;
+	}
+
+	return applyChange;
 }
 
 FVector USpecialMovementComponent::calcWallrunDir(FVector wallNormal, ESpecialMovementState state)
@@ -389,6 +438,11 @@ ESpecialMovementState USpecialMovementComponent::findWallrunSide(FVector wallNor
 	}
 }
 
+bool USpecialMovementComponent::canJumpBoost() const
+{
+	return move->IsFalling() == false && (mState == ESpecialMovementState::NONE || mState == ESpecialMovementState::SLIDE);
+}
+
 FVector USpecialMovementComponent::calcLaunchVelocity(bool jumpBoostEnabled) const
 {
 	FVector launchDir(0, 0, 0);
@@ -411,7 +465,7 @@ FVector USpecialMovementComponent::calcLaunchVelocity(bool jumpBoostEnabled) con
 		launchDir.Normalize();
 		launchDir *= move->JumpZVelocity;
 	}
-	else if (jumpBoostEnabled && mState == ESpecialMovementState::NONE) {
+	else if (jumpBoostEnabled && canJumpBoost()) {
 		// Jumpboost: check for a close edge
 		FVector movedir = owner->GetActorForwardVector();
 		float const length = owner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + move->MaxStepHeight * 2.0f;
@@ -529,5 +583,84 @@ void USpecialMovementComponent::addCameraRotation(FRotator const & addRotation)
 	if (controller) {
 		FRotator const currentRotation = controller->GetControlRotation();
 		controller->SetControlRotation(currentRotation + addRotation);
+	}
+}
+
+bool USpecialMovementComponent::canSlide()
+{
+	if (move->IsFalling() || move->CurrentFloor.IsWalkableFloor() == false || mState != ESpecialMovementState::NONE) {
+		return false;
+	}
+	return true;
+}
+
+void USpecialMovementComponent::startSlide()
+{
+	if (canSlide() == false) {
+		return;
+	}
+
+	if (switchState(ESpecialMovementState::SLIDE) == false) {
+		return;
+	}
+
+	// addImpulse in the direction of the current floor
+	FVector const FloorNormal = move->CurrentFloor.HitResult.ImpactNormal;
+	FVector launchInFloorDirection = FVector::CrossProduct(FloorNormal, owner->GetActorRightVector()) * -1.0f;
+
+	launchInFloorDirection.Normalize();
+	launchInFloorDirection *= move->MaxWalkSpeed * 0.75f;
+
+	// 1.2 factor for a little tolerance to "feel" better
+	if (move->Velocity.Length() <= move->MaxWalkSpeed * 1.2f) {
+		move->AddImpulse(launchInFloorDirection, true);
+#ifdef DRAW_DEBUG
+		GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Cyan, FString::Printf(TEXT("started slide dir: %s"), *launchInFloorDirection.ToString()));
+		DrawDebugLine(GetWorld(), owner->GetActorLocation(), owner->GetActorLocation() + launchInFloorDirection, FColor::Cyan, false, 100.0f, 0U, 5.0f);
+	}
+	else {
+		DrawDebugLine(GetWorld(), owner->GetActorLocation(), owner->GetActorLocation() + move->Velocity, FColor::Orange, false, 100.0f, 0U, 5.0f);
+#endif
+	}
+
+	owner->Crouch();
+	move->MaxWalkSpeedCrouched = 0.0f;
+	move->GroundFriction = 0.0f;
+	move->BrakingDecelerationWalking = 400.0f;
+	move->bOrientRotationToMovement = false;
+
+	move->SetPlaneConstraintFromVectors(launchInFloorDirection, FloorNormal);
+	move->SetPlaneConstraintEnabled(true);
+}
+
+void USpecialMovementComponent::endSlide(EWallrunEndReason endReason)
+{
+	if (switchState(ESpecialMovementState::NONE) == false) {
+		return;
+	}
+
+	owner->UnCrouch();
+	move->MaxWalkSpeedCrouched = mDefaultMaxWalkSpeedCrouched;
+	move->GroundFriction = mDefaultGroundFriction;
+	move->BrakingDecelerationWalking = mDefaultBrakingDecelerationWalking;
+	move->bOrientRotationToMovement = true;
+
+	move->SetPlaneConstraintEnabled(false);
+}
+
+void USpecialMovementComponent::updateSlide(float time)
+{
+	if (move->IsFalling() /* || move->CurrentFloor.IsWalkableFloor() == false */) {
+#ifdef DRAW_DEBUG
+		GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Cyan, FString::Printf(TEXT("stopped slide. reason: in air")));
+#endif
+		endSlide(EWallrunEndReason::FALL_OFF);
+	}
+
+	if (move->Velocity.Length() < move->MaxWalkSpeed * 0.8f) {
+#ifdef DRAW_DEBUG
+		GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Cyan, FString::Printf(TEXT("stopped slide. reason: velocity too low")));
+#endif
+		endSlide(EWallrunEndReason::ANGLE_OUT_OF_BOUNDS);
 	}
 }

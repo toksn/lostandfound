@@ -77,6 +77,8 @@ void AlostandfoundCharacter::SetupPlayerInputComponent(class UInputComponent* Pl
 	PlayerInputComponent->BindAxis("Look Up / Down Mouse", this, &APawn::AddControllerPitchInput);
 	PlayerInputComponent->BindAxis("Look Up / Down Gamepad", this, &AlostandfoundCharacter::LookUpAtRate);
 
+	PlayerInputComponent->BindAction("SpecialMove1", IE_Pressed, this->specialMoves, &USpecialMovementComponent::Slide);
+
 	// handle touch devices
 	PlayerInputComponent->BindTouch(IE_Pressed, this, &AlostandfoundCharacter::TouchStarted);
 	PlayerInputComponent->BindTouch(IE_Released, this, &AlostandfoundCharacter::TouchStopped);

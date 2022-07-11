@@ -44,6 +44,9 @@ public:
 	void OnLanded(const FHitResult& Hit);
 	void Jump();
 
+	UFUNCTION()
+	void Slide();
+
 	float mRightAxis;
 	float mForwardAxis;
 
@@ -95,6 +98,10 @@ private:
 	float mDefaultAirControl;
 	float mDefaultMaxWalkSpeed;
 
+	float mDefaultGroundFriction;
+	float mDefaultBrakingDecelerationWalking;
+	float mDefaultMaxWalkSpeedCrouched;
+
 	FVector mWallrunDir;
 	FVector mWallNormal;
 	FVector mWallImpact;
@@ -137,6 +144,13 @@ private:
 	double calcAngleBetweenVectors(FVector a, FVector b);
 	bool isValidInnerOuterAngleDiff(FVector const & origin, const FHitResult& hit, double * angleOut = NULL);
 	void addCameraRotation(FRotator const & addRotation);
+
+	bool canJumpBoost() const;
+
+	bool canSlide();
+	void startSlide();
+	void endSlide(EWallrunEndReason endReason);
+	void updateSlide(float time);
 
 	bool switchState(ESpecialMovementState newState);
 };
