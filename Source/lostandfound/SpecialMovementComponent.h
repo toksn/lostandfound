@@ -79,6 +79,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Settings, meta = (ClampMin = "1.0", ClampMax = "5.0", UIMin = "1.0", UIMax = "5.0"))
 	float mJumpBoostMultiplier = 1.7f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Settings, meta = (ClampMin = "0.0", UIMin = "0.0"))
+	float mSlideDeceleration = 400.0f;
+
+	/** Force to add when slide is activated. Multiplier to the walking speed. Multiplier of 0.0 won't boost. Range 0.0f to 5.0f */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Settings, meta = (ClampMin = "0.0", ClampMax = "5.0", UIMin = "0.0", UIMax = "5.0"))
+	float mSlideForceMultiplier = 0.75f;
+
 private:
 	class ACharacter* owner;
 	class UCharacterMovementComponent* move;

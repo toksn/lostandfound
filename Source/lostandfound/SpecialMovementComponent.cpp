@@ -609,11 +609,12 @@ void USpecialMovementComponent::startSlide()
 	FVector launchInFloorDirection = FVector::CrossProduct(FloorNormal, owner->GetActorRightVector()) * -1.0f;
 
 	launchInFloorDirection.Normalize();
-	launchInFloorDirection *= move->MaxWalkSpeed * 0.75f;
+	launchInFloorDirection *= move->MaxWalkSpeed * mSlideForceMultiplier;
 
-	// 1.2 factor for a little tolerance to "feel" better
+	// 1.2f factor for a little tolerance to "feel" better because slide can be activated more reliably
 	if (move->Velocity.Length() <= move->MaxWalkSpeed * 1.2f) {
 		move->AddImpulse(launchInFloorDirection, true);
+
 #ifdef DRAW_DEBUG
 		GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Cyan, FString::Printf(TEXT("started slide dir: %s"), *launchInFloorDirection.ToString()));
 		DrawDebugLine(GetWorld(), owner->GetActorLocation(), owner->GetActorLocation() + launchInFloorDirection, FColor::Cyan, false, 100.0f, 0U, 5.0f);
@@ -626,7 +627,7 @@ void USpecialMovementComponent::startSlide()
 	owner->Crouch();
 	move->MaxWalkSpeedCrouched = 0.0f;
 	move->GroundFriction = 0.0f;
-	move->BrakingDecelerationWalking = 400.0f;
+	move->BrakingDecelerationWalking = mSlideDeceleration;
 	move->bOrientRotationToMovement = false;
 
 	move->SetPlaneConstraintFromVectors(launchInFloorDirection, FloorNormal);
@@ -650,14 +651,14 @@ void USpecialMovementComponent::endSlide(EWallrunEndReason endReason)
 
 void USpecialMovementComponent::updateSlide(float time)
 {
-	if (move->IsFalling() /* || move->CurrentFloor.IsWalkableFloor() == false */) {
+	if (move->IsFalling() || move->CurrentFloor.IsWalkableFloor() == false ) {
 #ifdef DRAW_DEBUG
 		GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Cyan, FString::Printf(TEXT("stopped slide. reason: in air")));
 #endif
 		endSlide(EWallrunEndReason::FALL_OFF);
 	}
 
-	if (move->Velocity.Length() < move->MaxWalkSpeed * 0.8f) {
+	if (move->Velocity.Length() < move->MaxWalkSpeed * 0.9f) {
 #ifdef DRAW_DEBUG
 		GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Cyan, FString::Printf(TEXT("stopped slide. reason: velocity too low")));
 #endif
