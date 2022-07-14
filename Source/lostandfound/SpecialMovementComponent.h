@@ -18,7 +18,6 @@ enum class ESpecialMovementState : uint8
 	LEDGE_PULL		UMETA(DisplayName = "Ledge Pull")
 };
 
-
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
 class LOSTANDFOUND_API USpecialMovementComponent : public UActorComponent
 {
@@ -85,6 +84,15 @@ public:
 	/** Force to add when slide is activated. Multiplier to the walking speed. Multiplier of 0.0 won't boost. Range 0.0f to 5.0f */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Settings, meta = (ClampMin = "0.0", ClampMax = "5.0", UIMin = "0.0", UIMax = "5.0"))
 	float mSlideForceMultiplier = 0.75f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Debug)
+	bool mDebugWallrun = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Debug)
+	bool mDebugJump = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Debug)
+	bool mDebugSlide = false;
 
 private:
 	class ACharacter* owner;
