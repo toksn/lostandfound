@@ -109,8 +109,10 @@ void AlostandfoundCharacter::TouchStopped(ETouchIndex::Type FingerIndex, FVector
 	StopJumping();
 }
 
-void AlostandfoundCharacter::OnLanded(const FHitResult& Hit)
+void AlostandfoundCharacter::Landed(const FHitResult& Hit)
 {
+	Super::Landed(Hit);
+
 	specialMoves->OnLanded(Hit);
 }
 

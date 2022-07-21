@@ -134,7 +134,7 @@ bool USpecialMovementComponent::checkDirectionForWall(FHitResult& hit, FVector c
 		DrawDebugLine(GetWorld(), origin, origin + direction, FColor::Red, false, 40.0f, 0U, 5.0f);
 	}
 
-	return GetWorld()->LineTraceSingleByChannel(hit, origin, origin + direction, ECollisionChannel::ECC_Visibility, IGNORE_SELF_COLLISION_PARAM);
+	return GetWorld()->LineTraceSingleByChannel(hit, origin, origin + direction, ECollisionChannel::ECC_WorldStatic, IGNORE_SELF_COLLISION_PARAM);
 }
 
 void USpecialMovementComponent::startWallClaw(float speed, float targetZVelocity)
@@ -478,7 +478,7 @@ FVector USpecialMovementComponent::calcLaunchVelocity(bool jumpBoostEnabled) con
 		FVector traceDownOrigin = move->GetActorLocation() + movedir * (CAPSULE_RADIUS + tolerance);
 
 		FHitResult hit;
-		bool onEdge = false == GetWorld()->LineTraceSingleByChannel(hit, traceDownOrigin, traceDownOrigin - FVector(0.0f, 0.0f, length), ECollisionChannel::ECC_Visibility, IGNORE_SELF_COLLISION_PARAM);
+		bool onEdge = false == GetWorld()->LineTraceSingleByChannel(hit, traceDownOrigin, traceDownOrigin - FVector(0.0f, 0.0f, length), ECollisionChannel::ECC_WorldStatic, IGNORE_SELF_COLLISION_PARAM);
 
 		if (mDebugJump) {
 			FColor debugCol = onEdge ? FColor::Green : FColor::Red;

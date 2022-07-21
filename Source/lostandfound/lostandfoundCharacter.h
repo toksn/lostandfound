@@ -54,7 +54,7 @@ protected:
 	/** Handler for when a touch input stops. */
 	void TouchStopped(ETouchIndex::Type FingerIndex, FVector Location);
 
-	void OnLanded(const FHitResult& Hit);
+	virtual void Landed(const FHitResult& Hit);
 	void Tick(float time);
 
 	void BeginPlay();
